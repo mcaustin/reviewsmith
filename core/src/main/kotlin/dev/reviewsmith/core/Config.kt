@@ -28,7 +28,7 @@ data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
     val docs: DocsConfig = DocsConfig(),
     val validator: ValidatorConfig = ValidatorConfig(),
-    val maxConcurrency: Int = 1,
+    val maxConcurrency: Int = 4,
 ) {
     companion object {
         fun load(repoRoot: Path): ReviewsmithConfig {

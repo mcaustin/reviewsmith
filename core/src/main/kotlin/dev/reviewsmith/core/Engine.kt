@@ -3,6 +3,13 @@ package dev.reviewsmith.core
 import dev.reviewsmith.spi.AgentProvider
 import dev.reviewsmith.spi.AgentRequest
 import dev.reviewsmith.spi.Finding
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
@@ -35,21 +42,22 @@ class Engine(
             return RunResult(emptyList(), 0, rules.size)
         }
 
-        val raw = mutableListOf<Finding>()
-        for (rule in rules) {
-            val targets = files.filter { rel -> matchesRule(rule, rel, config) }
-            if (targets.isEmpty()) continue
+        // One work unit per (rule × matching file), dispatched concurrently.
+        val units = rules.flatMap { rule ->
+            files.filter { rel -> matchesRule(rule, rel, config) }
+                .map { file -> rule to file }
+        }
+
+        val raw = runBounded(config.maxConcurrency, units) { (rule, file) ->
             val request = AgentRequest(
                 systemPrompt = Prompts.ruleSystemPrompt(),
-                rulePrompt = Prompts.ruleUserPrompt(rule, targets, docs),
-                targetFiles = targets,
+                rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), docs),
+                targetFiles = listOf(file),
                 docRefs = docs,
                 projectRoot = repoRoot.toString(),
                 outputSchema = Prompts.findingsSchema,
             )
-            val result = provider.analyze(request)
-            // Stamp the rule id onto findings the agent produced (the rule schema has none).
-            raw += result.findings.map { it.copy(ruleId = rule.id) }
+            provider.analyze(request).findings.map { it.copy(ruleId = rule.id) }
         }
 
         val validated = if (config.validator.enabled && raw.isNotEmpty()) {
@@ -60,6 +68,40 @@ class Engine(
 
         return RunResult(validated, files.size, rules.size)
     }
+
+    /**
+     * Runs [task] over [items] with at most [concurrency] in flight and flattens the
+     * per-item finding lists. One item's failure is isolated (logged, contributes no
+     * findings) so a single unreadable file can't sink the whole run — except an
+     * unavailable agent, which is fatal for every item and is rethrown.
+     */
+    private fun <T> runBounded(
+        concurrency: Int,
+        items: List<T>,
+        task: suspend (T) -> List<Finding>,
+    ): List<Finding> = runBlocking(Dispatchers.IO) {
+        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        coroutineScope {
+            items.map { item ->
+                async {
+                    semaphore.withPermit {
+                        try {
+                            task(item)
+                        } catch (e: Exception) {
+                            if (isAgentUnavailable(e)) throw e
+                            System.err.println("Reviewsmith: skipping a unit after error: ${e.message}")
+                            emptyList()
+                        }
+                    }
+                }
+            }.awaitAll().flatten()
+        }
+    }
+
+    private fun isAgentUnavailable(e: Throwable): Boolean =
+        generateSequence(e) { it.cause }.any {
+            it::class.simpleName == "AgentUnavailableException"
+        }
 
     private fun matchesRule(rule: Rule, rel: String, config: ReviewsmithConfig): Boolean {
         if (rule.appliesTo.isEmpty()) return true
