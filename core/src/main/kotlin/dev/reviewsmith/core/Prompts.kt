@@ -1,0 +1,101 @@
+package dev.reviewsmith.core
+
+object Prompts {
+    val findingsSchema: String = """
+        {
+          "type": "object",
+          "properties": {
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "file": { "type": "string" },
+                  "line": { "type": "integer" },
+                  "severity": { "type": "string", "enum": ["INFO", "WARNING", "ERROR"] },
+                  "message": { "type": "string" },
+                  "rationale": { "type": "string" }
+                },
+                "required": ["file", "severity", "message"]
+              }
+            }
+          },
+          "required": ["findings"]
+        }
+    """.trimIndent()
+
+    fun ruleSystemPrompt(): String = """
+        You are Reviewsmith, an automated code reviewer. You are given one review rule and
+        a set of changed files in a repository you can read with your tools. Apply ONLY the
+        given rule. Read the referenced project docs and any surrounding code you need.
+        Report only genuine violations caused by or related to the changed code — never
+        pre-existing, unrelated issues. If you are unsure whether something is a real
+        defect, do not report it. Return your findings using the required JSON output
+        schema and nothing else.
+    """.trimIndent()
+
+    fun validatorSystemPrompt(): String = """
+        You are a skeptical senior reviewer auditing findings produced by automated review
+        rules. Discard findings that are factually wrong, not caused by the change, noise
+        (e.g. wrapping a non-nullable in a null guard), or convention claims contradicted
+        by the project's own docs. Keep only genuinely correct, actionable findings. For
+        each kept finding, set "confidence" to "CLEAR" for a mechanical single-fix issue
+        with low blast radius, or "AMBIGUOUS" for a judgment call or anything changing
+        behavior or a public API. Return the kept findings using the required JSON schema,
+        adding a "confidence" field to each.
+    """.trimIndent()
+
+    val validatorSchema: String = """
+        {
+          "type": "object",
+          "properties": {
+            "findings": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "ruleId": { "type": "string" },
+                  "file": { "type": "string" },
+                  "line": { "type": "integer" },
+                  "severity": { "type": "string", "enum": ["INFO", "WARNING", "ERROR"] },
+                  "message": { "type": "string" },
+                  "rationale": { "type": "string" },
+                  "confidence": { "type": "string", "enum": ["CLEAR", "AMBIGUOUS"] }
+                },
+                "required": ["ruleId", "file", "severity", "message", "confidence"]
+              }
+            }
+          },
+          "required": ["findings"]
+        }
+    """.trimIndent()
+
+    fun ruleUserPrompt(rule: Rule, targets: List<String>, docs: List<String>): String = buildString {
+        appendLine("# Rule: ${rule.name} (id: ${rule.id})")
+        appendLine()
+        appendLine(rule.body)
+        appendLine()
+        appendLine("## Changed files to review")
+        targets.forEach { appendLine("- $it") }
+        if (docs.isNotEmpty()) {
+            appendLine()
+            appendLine("## Project docs to read for context (read the relevant ones)")
+            docs.forEach { appendLine("- $it") }
+        }
+    }
+
+    fun validatorUserPrompt(rawFindingsJson: String, docs: List<String>): String = buildString {
+        appendLine("# Findings to audit")
+        appendLine()
+        appendLine("Below are candidate findings as JSON. Audit each per your instructions.")
+        appendLine()
+        appendLine("```json")
+        appendLine(rawFindingsJson)
+        appendLine("```")
+        if (docs.isNotEmpty()) {
+            appendLine()
+            appendLine("## Project docs available for verification")
+            docs.forEach { appendLine("- $it") }
+        }
+    }
+}

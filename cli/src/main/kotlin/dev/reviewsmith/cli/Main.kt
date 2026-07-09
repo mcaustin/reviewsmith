@@ -1,0 +1,57 @@
+package dev.reviewsmith.cli
+
+import dev.reviewsmith.core.ConsoleReporter
+import dev.reviewsmith.core.Engine
+import dev.reviewsmith.provider.claudecode.AgentUnavailableException
+import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
+import picocli.CommandLine
+import picocli.CommandLine.Command
+import picocli.CommandLine.Option
+import java.nio.file.Path
+import java.util.concurrent.Callable
+import kotlin.system.exitProcess
+
+@Command(
+    name = "reviewsmith",
+    mixinStandardHelpOptions = true,
+    version = ["reviewsmith 0.0.1"],
+    description = ["AI-agent code review that reasons about intent."],
+)
+class ReviewsmithCommand : Callable<Int> {
+
+    @Option(names = ["--scope"], description = ["changed (default) | full"])
+    var scope: String? = null
+
+    @Option(names = ["--root"], description = ["Repository root (default: current dir)"])
+    var root: String = System.getProperty("user.dir")
+
+    @Option(names = ["--model"], description = ["Model id to pass to the claude CLI"])
+    var model: String? = null
+
+    @Option(names = ["--no-color"], description = ["Disable ANSI color"])
+    var noColor: Boolean = false
+
+    override fun call(): Int {
+        val repoRoot = Path.of(root).toAbsolutePath().normalize()
+        System.err.println("Reviewsmith: analyzing ${scope ?: "changed"} files in $repoRoot ...")
+
+        val provider = ClaudeCodeProvider(model = model)
+        val engine = Engine(provider)
+        val result = try {
+            engine.run(repoRoot, scope)
+        } catch (e: AgentUnavailableException) {
+            System.err.println("Reviewsmith: ${e.message}")
+            System.err.println("Reviewsmith: skipping review (agent unavailable).")
+            return 0
+        }
+
+        println(ConsoleReporter.report(result.findings, result.filesReviewed, useColor = !noColor))
+
+        // Advisory in this milestone: always exit 0 unless something errored.
+        return 0
+    }
+}
+
+fun main(args: Array<String>) {
+    exitProcess(CommandLine(ReviewsmithCommand()).execute(*args))
+}
