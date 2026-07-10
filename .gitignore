@@ -5,3 +5,6 @@ build/
 .idea/
 .DS_Store
 local.properties
+
+# Internal project notes / planning docs — never commit (contain internal context).
+.project-notes/
