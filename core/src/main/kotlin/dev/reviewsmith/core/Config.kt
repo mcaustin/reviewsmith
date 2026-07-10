@@ -8,7 +8,8 @@ import java.nio.file.Path
 @Serializable
 data class ScopeConfig(
     val default: String = "changed",
-    val baseRef: String = "origin/main",
+    val baseRef: String? = null,
+    val detectBase: Boolean = true,
     val include: List<String> = listOf("**/*.kt", "**/*.java", "**/*.ts", "**/*.tsx"),
 )
 
@@ -21,6 +22,8 @@ data class DocsConfig(
 @Serializable
 data class ValidatorConfig(
     val enabled: Boolean = true,
+    val timeoutSeconds: Long = 600,
+    val chunkSize: Int = 20,
 )
 
 @Serializable
@@ -42,6 +45,13 @@ data class CacheConfig(
     val dir: String = ".reviewsmith/cache",
     val maxEntries: Int = 500,
 )
+
+@Serializable
+data class AgentConfig(
+    val isolation: String = "strict",
+) {
+    fun hermetic(): Boolean = isolation.lowercase() != "local"
+}
 
 enum class FailOnLevel { NONE, WARNING, ERROR }
 
@@ -71,6 +81,7 @@ data class ReviewsmithConfig(
     val baseline: BaselineConfig = BaselineConfig(),
     val cache: CacheConfig = CacheConfig(),
     val gate: GateConfig = GateConfig(),
+    val agent: AgentConfig = AgentConfig(),
 ) {
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =

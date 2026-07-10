@@ -33,7 +33,7 @@ class BaselineCommand : Callable<Int> {
 
         System.err.println("Reviewsmith baseline: full scan of $repoRoot ...")
 
-        val provider = ClaudeCodeProvider(model = model)
+        val provider = ClaudeCodeProvider(model = model, hermetic = config.agent.hermetic())
         val result = try {
             Engine(provider).run(repoRoot, mode = "full", baselineStore = BaselineStore.empty())
         } catch (e: AgentUnavailableException) {

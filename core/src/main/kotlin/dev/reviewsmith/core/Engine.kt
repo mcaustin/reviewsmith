@@ -2,6 +2,7 @@ package dev.reviewsmith.core
 
 import dev.reviewsmith.spi.AgentProvider
 import dev.reviewsmith.spi.AgentRequest
+import dev.reviewsmith.spi.Confidence
 import dev.reviewsmith.spi.Finding
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -115,7 +116,7 @@ class Engine(
         printTimingSummary(stats)
 
         val validated = if (config.validator.enabled && ruleRun.findings.isNotEmpty()) {
-            validate(repoRoot, ruleRun.findings, docs, config.callTimeoutSeconds)
+            validate(repoRoot, ruleRun.findings, docs, config.validator, config.maxConcurrency)
         } else {
             ruleRun.findings
         }
@@ -226,13 +227,31 @@ class Engine(
         repoRoot: Path,
         raw: List<Finding>,
         docs: List<String>,
+        config: ValidatorConfig,
+        concurrency: Int,
+    ): List<Finding> {
+        val chunks = raw.chunked(config.chunkSize.coerceAtLeast(1))
+        return runBlocking(Dispatchers.IO) {
+            val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+            chunks.map { chunk ->
+                async {
+                    semaphore.withPermit { validateChunk(repoRoot, chunk, docs, config.timeoutSeconds) }
+                }
+            }.awaitAll().flatten()
+        }
+    }
+
+    private fun validateChunk(
+        repoRoot: Path,
+        chunk: List<Finding>,
+        docs: List<String>,
         timeoutSeconds: Long,
     ): List<Finding> {
-        val rawJson = json.encodeToString(mapOf("findings" to raw))
+        val rawJson = json.encodeToString(mapOf("findings" to chunk))
         val request = AgentRequest(
             systemPrompt = Prompts.validatorSystemPrompt(),
             rulePrompt = Prompts.validatorUserPrompt(rawJson, docs),
-            targetFiles = raw.map { it.file }.distinct(),
+            targetFiles = chunk.map { it.file }.distinct(),
             docRefs = docs,
             projectRoot = repoRoot.toString(),
             outputSchema = Prompts.validatorSchema,
@@ -245,9 +264,10 @@ class Engine(
         } catch (e: Exception) {
             if (isAgentUnavailable(e)) throw e
             System.err.println(
-                "Reviewsmith: validator abandoned after ${abandonKind(e)}: ${e.message}; keeping raw findings",
+                "Reviewsmith: validator chunk abandoned after ${abandonKind(e)}: ${e.message}; " +
+                    "keeping ${chunk.size} finding(s) as AMBIGUOUS",
             )
-            raw
+            chunk.map { if (it.confidence == null) it.copy(confidence = Confidence.AMBIGUOUS) else it }
         }
     }
 }

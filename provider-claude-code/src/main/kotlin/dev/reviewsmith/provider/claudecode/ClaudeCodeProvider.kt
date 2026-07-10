@@ -24,6 +24,7 @@ class ClaudeCodeProvider(
     private val model: String? = null,
     private val claudeBin: String = "claude",
     private val runner: ProcessRunner = DefaultProcessRunner,
+    private val hermetic: Boolean = true,
 ) : AgentProvider {
     override val id: String = "claude-code"
     override val effectiveModel: String? get() = model
@@ -35,6 +36,7 @@ class ClaudeCodeProvider(
         val command = buildList {
             add(claudeBin)
             add("-p")
+            if (hermetic) add("--safe-mode")
             add("--output-format"); add("json")
             add("--json-schema"); add(request.outputSchema)
             add("--append-system-prompt"); add(request.systemPrompt)

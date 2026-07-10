@@ -42,7 +42,8 @@ class ConfigTest {
         assertFalse(c.validator.enabled)
         // untouched fields keep defaults
         assertEquals("changed", c.scope.default)
-        assertEquals("origin/main", c.scope.baseRef)
+        assertNull(c.scope.baseRef)
+        assertTrue(c.scope.detectBase)
     }
 
     @Test
@@ -111,6 +112,19 @@ class ConfigTest {
         val gate = ReviewsmithConfig.parse("gate:\n  failOn: warning\n  onlyConfidence: clear").gate
         assertEquals(FailOnLevel.WARNING, gate.failOnLevel())
         assertEquals("clear", gate.onlyConfidence)
+    }
+
+    @Test
+    fun `agent isolation defaults to strict hermetic`() {
+        val agent = ReviewsmithConfig.parse("{}").agent
+        assertEquals("strict", agent.isolation)
+        assertTrue(agent.hermetic())
+    }
+
+    @Test
+    fun `agent isolation local is not hermetic`() {
+        assertFalse(ReviewsmithConfig.parse("agent:\n  isolation: local").agent.hermetic())
+        assertFalse(ReviewsmithConfig.parse("agent:\n  isolation: LOCAL").agent.hermetic())
     }
 
     @Test

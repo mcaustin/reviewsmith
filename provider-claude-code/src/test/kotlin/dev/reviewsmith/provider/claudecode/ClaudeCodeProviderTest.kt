@@ -158,6 +158,27 @@ class ClaudeCodeProviderTest {
     }
 
     @Test
+    fun `hermetic true adds safe-mode`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner, hermetic = true).analyze(request())
+        assertTrue(runner.lastCommand.contains("--safe-mode"), runner.lastCommand.toString())
+    }
+
+    @Test
+    fun `hermetic false omits safe-mode`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner, hermetic = false).analyze(request())
+        assertFalse(runner.lastCommand.contains("--safe-mode"))
+    }
+
+    @Test
+    fun `default provider is hermetic`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner).analyze(request())
+        assertTrue(runner.lastCommand.contains("--safe-mode"))
+    }
+
+    @Test
     fun `budget uses a dot decimal separator under a comma-decimal locale`() {
         val original = Locale.getDefault()
         try {

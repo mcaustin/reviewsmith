@@ -53,6 +53,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--format"], description = ["console (default) | json | sarif"])
     var format: String = "console"
 
+    @Option(names = ["--isolation"], description = ["strict (default, hermetic) | local (apply your local Claude config)"])
+    var isolation: String? = null
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -77,7 +80,12 @@ class ReviewsmithCommand : Callable<Int> {
             else -> null
         }
 
-        val provider = ClaudeCodeProvider(model = model)
+        val hermetic = when (isolation?.lowercase()) {
+            "local" -> false
+            "strict" -> true
+            else -> config.agent.hermetic()
+        }
+        val provider = ClaudeCodeProvider(model = model, hermetic = hermetic)
         val engine = Engine(provider)
         val result = try {
             engine.run(repoRoot, scope, cacheStore = cacheStore)

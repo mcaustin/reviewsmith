@@ -20,11 +20,13 @@ class ScopeResolverTest {
         val uncommitted: String = "",
         val untracked: String = "",
         val mergeBase: String = "BASE",
+        val ghPrBase: String = "",
     ) : CommandRunner {
         val refChecks = mutableListOf<String>()
 
         override fun run(workingDir: Path, command: List<String>): String {
             return when {
+                command.firstOrNull() == "gh" -> ghPrBase
                 command.contains("rev-parse") -> {
                     val ref = command.last().removeSuffix("^{commit}")
                     refChecks += ref
@@ -102,5 +104,58 @@ class ScopeResolverTest {
         val git = FakeGit(existingRefs = emptySet(), uncommitted = "Local.kt\n", untracked = "New.kt\n")
         val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
         assertEquals(listOf("Local.kt", "New.kt"), files)
+    }
+
+    @Test
+    fun `explicit config baseRef wins over everything`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/release-1", "origin/main"), committed = "A.kt\n", ghPrBase = "some-pr-base")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(baseRef = "origin/release-1"))
+        ScopeResolver(git, env = { "env-branch" }).resolve(repo, cfg, "changed")
+        assertEquals("origin/release-1", git.refChecks.first(), "config baseRef must be tried first")
+    }
+
+    @Test
+    fun `GITHUB_BASE_REF detected as PR base`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/feature-parent", "origin/main"), committed = "A.kt\n")
+        ScopeResolver(git, env = { if (it == "GITHUB_BASE_REF") "feature-parent" else null })
+            .resolve(repo, config(), "changed")
+        assertEquals("origin/feature-parent", git.refChecks.first())
+    }
+
+    @Test
+    fun `gh PR base auto-detected for a stacked PR`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/parent-pr", "origin/main"), committed = "A.kt\n", ghPrBase = "parent-pr\n")
+        ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
+        assertEquals("origin/parent-pr", git.refChecks.first(), "gh PR base should be tried before main")
+    }
+
+    @Test
+    fun `gh failure falls through to origin main`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n", ghPrBase = "")
+        ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
+        assertEquals("origin/main", git.refChecks.first { it in setOf("origin/main") })
+    }
+
+    @Test
+    fun `detectBase false skips gh probe`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/parent-pr", "origin/main"), committed = "A.kt\n", ghPrBase = "parent-pr\n")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(detectBase = false))
+        ScopeResolver(git, env = { null }).resolve(repo, cfg, "changed")
+        assertFalse(git.refChecks.contains("origin/parent-pr"), "gh base must not be consulted when detectBase=false")
+        assertEquals("origin/main", git.refChecks.first { it in setOf("origin/main") })
+    }
+
+    @Test
+    fun `normal PR to main is unchanged when no detection signals`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n")
+        val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
+        assertEquals(listOf("A.kt"), files)
+        assertEquals("origin/main", git.refChecks.first { it in setOf("origin/main") })
     }
 }
