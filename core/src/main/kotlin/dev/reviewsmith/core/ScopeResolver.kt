@@ -23,6 +23,7 @@ object ProcessCommandRunner : CommandRunner {
 
 class ScopeResolver(
     private val runner: CommandRunner = ProcessCommandRunner,
+    private val env: (String) -> String? = System::getenv,
 ) {
     fun resolve(repoRoot: Path, config: ReviewsmithConfig, mode: String): List<String> {
         val files = when (mode) {
@@ -42,7 +43,8 @@ class ScopeResolver(
             runner.run(repoRoot, listOf("git", "diff", "--name-only", base, "HEAD"))
         } ?: ""
         val uncommitted = runner.run(repoRoot, listOf("git", "diff", "--name-only", "HEAD"))
-        return (committed.lines() + uncommitted.lines())
+        val untracked = runner.run(repoRoot, listOf("git", "ls-files", "--others", "--exclude-standard"))
+        return (committed.lines() + uncommitted.lines() + untracked.lines())
             .map { it.trim() }
             .filter { it.isNotEmpty() }
     }
@@ -53,7 +55,12 @@ class ScopeResolver(
      * remote), in which case only uncommitted changes are considered.
      */
     private fun resolveBase(repoRoot: Path, configuredBaseRef: String): String? {
+        val changeTarget = env("CHANGE_TARGET")?.trim()?.takeIf { it.isNotEmpty() }
         val candidates = buildList {
+            if (changeTarget != null) {
+                add("origin/$changeTarget")
+                add(changeTarget)
+            }
             add(configuredBaseRef)
             add("origin/main")
             add("origin/master")
