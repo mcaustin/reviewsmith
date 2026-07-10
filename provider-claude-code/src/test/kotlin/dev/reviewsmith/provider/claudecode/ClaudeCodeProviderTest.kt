@@ -2,6 +2,7 @@ package dev.reviewsmith.provider.claudecode
 
 import dev.reviewsmith.spi.AgentRequest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -86,5 +87,36 @@ class ClaudeCodeProviderTest {
         val runner = ScriptedRunner(listOf({ envelope("[]") }))
         ClaudeCodeProvider(runner = runner).analyze(request())
         assertEquals(listOf(42L), runner.timeouts)
+    }
+
+    @Test
+    fun `duration cost and usage are extracted from the envelope`() {
+        val full = """
+            {"duration_ms": 4210, "total_cost_usd": 0.1307,
+             "usage": {"input_tokens": 5000, "output_tokens": 12, "cache_read_input_tokens": 800},
+             "result": {"findings": []}}
+        """.trimIndent()
+        val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ full }))).analyze(request())
+
+        assertEquals(4210L, result.durationMs)
+        assertEquals(0.1307, result.costUsd!!, 1e-9)
+        assertEquals(5000L, result.usage?.inputTokens)
+        assertEquals(12L, result.usage?.outputTokens)
+        assertEquals(800L, result.usage?.cacheReadInputTokens)
+    }
+
+    @Test
+    fun `missing envelope telemetry fields yield nulls`() {
+        val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ envelope("[]") }))).analyze(request())
+        assertNull(result.durationMs)
+        assertNull(result.costUsd)
+        assertNull(result.usage)
+    }
+
+    @Test
+    fun `a top-level JSON array does not crash telemetry extraction`() {
+        val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ "[]" }, { envelope("[]") }))).analyze(request())
+        assertNull(result.durationMs)
+        assertNull(result.costUsd)
     }
 }

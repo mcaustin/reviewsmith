@@ -22,6 +22,7 @@ data class Finding(
 data class TokenUsage(
     val inputTokens: Long? = null,
     val outputTokens: Long? = null,
+    val cacheReadInputTokens: Long? = null,
 )
 
 data class AgentRequest(
@@ -39,6 +40,8 @@ data class AgentResult(
     val modelId: String? = null,
     val usage: TokenUsage? = null,
     val rawOutput: String? = null,
+    val durationMs: Long? = null,
+    val costUsd: Double? = null,
 )
 
 /**

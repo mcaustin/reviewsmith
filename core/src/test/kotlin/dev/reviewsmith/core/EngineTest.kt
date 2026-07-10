@@ -92,6 +92,21 @@ class EngineTest {
     }
 
     @Test
+    fun `total cost accumulates across rule units`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false",
+        )
+        val provider = FakeProvider(durationMs = 1200, costUsd = 0.05)
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        // 1 rule x 2 .kt files = 2 units, each $0.05.
+        assertEquals(0.10, result.totalCostUsd!!, 1e-9)
+    }
+
+    @Test
     fun `a failing unit is isolated and counted as abandoned`(@TempDir repo: Path) {
         seedRepo(repo)
         Files.writeString(

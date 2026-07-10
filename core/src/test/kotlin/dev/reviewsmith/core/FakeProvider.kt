@@ -12,6 +12,8 @@ import dev.reviewsmith.spi.Finding
  */
 class FakeProvider(
     private val findingsPerRuleCall: List<Finding> = emptyList(),
+    private val durationMs: Long? = null,
+    private val costUsd: Double? = null,
 ) : AgentProvider {
     override val id: String = "fake"
 
@@ -23,7 +25,12 @@ class FakeProvider(
         val isValidator = request.systemPrompt.contains("skeptical", ignoreCase = true) ||
             request.rulePrompt.contains("\"findings\"")
         val findings = if (isValidator) emptyList() else findingsPerRuleCall
-        return AgentResult(findings = findings, modelId = "fake-model")
+        return AgentResult(
+            findings = findings,
+            modelId = "fake-model",
+            durationMs = durationMs,
+            costUsd = costUsd,
+        )
     }
 
     fun ruleCallCount(): Int = requests.count {

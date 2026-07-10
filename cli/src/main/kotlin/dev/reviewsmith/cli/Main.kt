@@ -75,6 +75,10 @@ class ReviewsmithCommand : Callable<Int> {
             ),
         )
 
+        result.totalCostUsd?.takeIf { it > 0 }?.let {
+            System.err.println("Reviewsmith: run cost \$%.4f".format(it))
+        }
+
         maybePrintBaselineTip(repoRoot, result.findings.size)
 
         // Advisory in this milestone: always exit 0 unless something errored.

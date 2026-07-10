@@ -12,6 +12,7 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.encodeToString
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
 data class RunResult(
@@ -20,6 +21,7 @@ data class RunResult(
     val rulesRun: Int,
     val suppressedByBaseline: Int = 0,
     val abandonedUnits: Int = 0,
+    val totalCostUsd: Double? = null,
 )
 
 /**
@@ -56,6 +58,9 @@ class Engine(
                 .map { file -> rule to file }
         }
 
+        val stats = ConcurrentHashMap<String, RuleStat>()
+        val verbose = System.getenv("REVIEWSMITH_VERBOSE") == "1"
+
         val ruleRun = runBounded(config.maxConcurrency, units) { (rule, file) ->
             val request = AgentRequest(
                 systemPrompt = Prompts.ruleSystemPrompt(),
@@ -66,8 +71,17 @@ class Engine(
                 outputSchema = Prompts.findingsSchema,
                 callTimeoutSeconds = config.callTimeoutSeconds,
             )
-            provider.analyze(request).findings.map { it.copy(ruleId = rule.id) }
+            val result = provider.analyze(request)
+            recordStat(stats, rule.id, result.durationMs, result.costUsd)
+            if (verbose) {
+                val ms = result.durationMs?.let { "${it}ms" } ?: "?ms"
+                val cost = result.costUsd?.let { "$%.4f".format(it) } ?: "?"
+                System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] $ms $cost")
+            }
+            result.findings.map { it.copy(ruleId = rule.id) }
         }
+
+        printTimingSummary(stats)
 
         val validated = if (config.validator.enabled && ruleRun.findings.isNotEmpty()) {
             validate(repoRoot, ruleRun.findings, docs, config.callTimeoutSeconds)
@@ -82,10 +96,37 @@ class Engine(
             rulesRun = rules.size,
             suppressedByBaseline = partition.suppressed.size,
             abandonedUnits = ruleRun.abandonedUnits,
+            totalCostUsd = stats.values.sumOf { it.totalCost },
         )
     }
 
     private data class BoundedRun(val findings: List<Finding>, val abandonedUnits: Int)
+
+    private data class RuleStat(val maxMs: Long, val totalCost: Double, val units: Int)
+
+    private fun recordStat(
+        stats: ConcurrentHashMap<String, RuleStat>,
+        ruleId: String,
+        durationMs: Long?,
+        costUsd: Double?,
+    ) {
+        val add = RuleStat(durationMs ?: 0, costUsd ?: 0.0, 1)
+        stats.merge(ruleId, add) { a, b ->
+            RuleStat(maxOf(a.maxMs, b.maxMs), a.totalCost + b.totalCost, a.units + b.units)
+        }
+    }
+
+    private fun printTimingSummary(stats: ConcurrentHashMap<String, RuleStat>) {
+        if (stats.isEmpty()) return
+        System.err.println("Reviewsmith: timing summary (max wall-clock per rule, total cost):")
+        stats.entries.sortedByDescending { it.value.maxMs }.forEach { (ruleId, s) ->
+            System.err.println(
+                "  %-32s %7dms max / %d unit(s)  $%.4f".format(ruleId, s.maxMs, s.units, s.totalCost),
+            )
+        }
+        val totalCost = stats.values.sumOf { it.totalCost }
+        System.err.println("  %-32s %20s  $%.4f".format("total", "", totalCost))
+    }
 
     /**
      * Runs [task] over [items] with at most [concurrency] in flight and flattens the

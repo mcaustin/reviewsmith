@@ -6,6 +6,7 @@ import dev.reviewsmith.spi.AgentResult
 import dev.reviewsmith.spi.Confidence
 import dev.reviewsmith.spi.Finding
 import dev.reviewsmith.spi.Severity
+import dev.reviewsmith.spi.TokenUsage
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
@@ -59,10 +60,42 @@ class ClaudeCodeProvider(
             )
             findings = parse(output)
         }
+        val telemetry = extractTelemetry(output)
         return AgentResult(
             findings = findings ?: emptyList(),
             modelId = model,
             rawOutput = output,
+            usage = telemetry.usage,
+            durationMs = telemetry.durationMs,
+            costUsd = telemetry.costUsd,
+        )
+    }
+
+    private data class Telemetry(
+        val durationMs: Long? = null,
+        val costUsd: Double? = null,
+        val usage: TokenUsage? = null,
+    )
+
+    /** Pulls timing/cost/usage from the top-level `--output-format json` envelope. */
+    private fun extractTelemetry(output: String): Telemetry {
+        if (output.isBlank()) return Telemetry()
+        val envelope = runCatching { json.parseToJsonElement(output) }.getOrNull() as? JsonObject
+            ?: return Telemetry()
+        fun num(key: String) = envelope[key]?.jsonPrimitiveOrNull()?.contentOrNull
+        val usageObj = envelope["usage"] as? JsonObject
+        val usage = usageObj?.let {
+            fun u(key: String) = it[key]?.jsonPrimitiveOrNull()?.contentOrNull?.toLongOrNull()
+            TokenUsage(
+                inputTokens = u("input_tokens"),
+                outputTokens = u("output_tokens"),
+                cacheReadInputTokens = u("cache_read_input_tokens"),
+            )
+        }
+        return Telemetry(
+            durationMs = num("duration_ms")?.toLongOrNull(),
+            costUsd = num("total_cost_usd")?.toDoubleOrNull(),
+            usage = usage,
         )
     }
 
