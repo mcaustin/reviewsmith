@@ -1,5 +1,6 @@
 package dev.reviewsmith.cli
 
+import dev.reviewsmith.core.CacheStore
 import dev.reviewsmith.core.ConsoleReporter
 import dev.reviewsmith.core.Engine
 import dev.reviewsmith.core.ReviewsmithConfig
@@ -38,6 +39,12 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--list-rules"], description = ["List the resolved rules and exit (no agent calls)"])
     var listRules: Boolean = false
 
+    @Option(names = ["--no-cache"], description = ["Bypass cache reads and writes for this run"])
+    var noCache: Boolean = false
+
+    @Option(names = ["--refresh"], description = ["Bypass cache reads; write fresh results back to cache"])
+    var refresh: Boolean = false
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -55,10 +62,17 @@ class ReviewsmithCommand : Callable<Int> {
 
         System.err.println("Reviewsmith: analyzing ${scope ?: "changed"} files in $repoRoot ...")
 
+        val config = ReviewsmithConfig.load(repoRoot)
+        val cacheStore = when {
+            noCache -> CacheStore.noOp()
+            refresh -> CacheStore.refreshMode(config.cache, repoRoot)
+            else -> null
+        }
+
         val provider = ClaudeCodeProvider(model = model)
         val engine = Engine(provider)
         val result = try {
-            engine.run(repoRoot, scope)
+            engine.run(repoRoot, scope, cacheStore = cacheStore)
         } catch (e: AgentUnavailableException) {
             System.err.println("Reviewsmith: ${e.message}")
             System.err.println("Reviewsmith: skipping review (agent unavailable).")
@@ -71,12 +85,14 @@ class ReviewsmithCommand : Callable<Int> {
                 result.filesReviewed,
                 suppressedByBaseline = result.suppressedByBaseline,
                 abandonedUnits = result.abandonedUnits,
+                cacheHits = result.cacheHits,
                 useColor = !noColor,
             ),
         )
 
-        result.totalCostUsd?.takeIf { it > 0 }?.let {
-            System.err.println("Reviewsmith: run cost \$%.4f".format(it))
+        result.totalCostUsd?.let {
+            val hits = if (result.cacheHits > 0) " (${result.cacheHits} cache hit(s))" else ""
+            System.err.println("Reviewsmith: run cost \$%.4f".format(it) + hits)
         }
 
         maybePrintBaselineTip(repoRoot, result.findings.size)

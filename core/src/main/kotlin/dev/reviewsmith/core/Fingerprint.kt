@@ -17,9 +17,12 @@ object Fingerprint {
 
     fun of(finding: Finding): String = computeKey(finding.ruleId, normalizeFile(finding.file))
 
-    fun computeKey(ruleId: String, normalizedFile: String): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val bytes = digest.digest("$ruleId|$normalizedFile".toByteArray(Charsets.UTF_8))
-        return bytes.joinToString("") { "%02x".format(it) }.take(12)
-    }
+    fun computeKey(ruleId: String, normalizedFile: String): String =
+        sha256hex("$ruleId|$normalizedFile".toByteArray(Charsets.UTF_8)).take(12)
+}
+
+/** Full 64-hex-char SHA-256 of [bytes]. */
+internal fun sha256hex(bytes: ByteArray): String {
+    val digest = MessageDigest.getInstance("SHA-256")
+    return digest.digest(bytes).joinToString("") { "%02x".format(it) }
 }

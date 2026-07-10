@@ -53,5 +53,11 @@ data class AgentResult(
 interface AgentProvider {
     val id: String
 
+    /** The resolved model id, or null when unset (the cache is disabled without it). */
+    val effectiveModel: String? get() = null
+
+    /** The tool names the agent may use, as passed to the agent (affects what it can observe). */
+    val allowedTools: String get() = ""
+
     fun analyze(request: AgentRequest): AgentResult
 }

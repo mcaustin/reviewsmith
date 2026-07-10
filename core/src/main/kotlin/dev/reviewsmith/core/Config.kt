@@ -37,6 +37,13 @@ data class BaselineConfig(
 )
 
 @Serializable
+data class CacheConfig(
+    val enabled: Boolean = false,
+    val dir: String = ".reviewsmith/cache",
+    val maxEntries: Int = 500,
+)
+
+@Serializable
 data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
     val docs: DocsConfig = DocsConfig(),
@@ -47,6 +54,7 @@ data class ReviewsmithConfig(
     val ruleSources: List<String>? = null,
     val rules: Map<String, RuleOverride> = emptyMap(),
     val baseline: BaselineConfig = BaselineConfig(),
+    val cache: CacheConfig = CacheConfig(),
 ) {
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =

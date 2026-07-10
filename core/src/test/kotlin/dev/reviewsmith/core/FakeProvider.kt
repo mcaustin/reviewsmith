@@ -14,8 +14,11 @@ class FakeProvider(
     private val findingsPerRuleCall: List<Finding> = emptyList(),
     private val durationMs: Long? = null,
     private val costUsd: Double? = null,
+    model: String = "fake-model",
 ) : AgentProvider {
     override val id: String = "fake"
+    override val effectiveModel: String = model
+    override val allowedTools: String = "Read,Grep,Glob"
 
     val requests = mutableListOf<AgentRequest>()
 

@@ -26,6 +26,8 @@ class ClaudeCodeProvider(
     private val runner: ProcessRunner = DefaultProcessRunner,
 ) : AgentProvider {
     override val id: String = "claude-code"
+    override val effectiveModel: String? get() = model
+    override val allowedTools: String = ALLOWED_TOOLS
 
     private val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
@@ -36,7 +38,7 @@ class ClaudeCodeProvider(
             add("--output-format"); add("json")
             add("--json-schema"); add(request.outputSchema)
             add("--append-system-prompt"); add(request.systemPrompt)
-            add("--allowedTools"); add("Read,Grep,Glob")
+            add("--allowedTools"); add(ALLOWED_TOOLS)
             add("--add-dir"); add(request.projectRoot)
             if (model != null) { add("--model"); add(model) }
             if (request.maxBudgetUsd != null) {
@@ -168,4 +170,8 @@ class ClaudeCodeProvider(
     }
 
     private fun JsonElement.jsonPrimitiveOrNull() = (this as? JsonPrimitive)
+
+    private companion object {
+        const val ALLOWED_TOOLS = "Read,Grep,Glob"
+    }
 }

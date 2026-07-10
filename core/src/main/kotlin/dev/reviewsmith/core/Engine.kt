@@ -22,6 +22,7 @@ data class RunResult(
     val suppressedByBaseline: Int = 0,
     val abandonedUnits: Int = 0,
     val totalCostUsd: Double? = null,
+    val cacheHits: Int = 0,
 )
 
 /**
@@ -35,7 +36,12 @@ class Engine(
 ) {
     private val json = reviewsmithJson
 
-    fun run(repoRoot: Path, mode: String? = null, baselineStore: BaselineStore? = null): RunResult {
+    fun run(
+        repoRoot: Path,
+        mode: String? = null,
+        baselineStore: BaselineStore? = null,
+        cacheStore: CacheStore? = null,
+    ): RunResult {
         val config = ReviewsmithConfig.load(repoRoot)
         val effectiveMode = mode ?: config.scope.default
         val files = scopeResolver.resolve(repoRoot, config, effectiveMode)
@@ -45,6 +51,8 @@ class Engine(
         if (files.isEmpty()) {
             return RunResult(emptyList(), 0, rules.size)
         }
+
+        val cache = cacheStore ?: resolveCache(config.cache, repoRoot)
 
         val store = baselineStore ?: if (config.baseline.enabled) {
             BaselineStore.resolveFromConfig(config, repoRoot)
@@ -61,7 +69,22 @@ class Engine(
         val stats = ConcurrentHashMap<String, RuleStat>()
         val verbose = System.getenv("REVIEWSMITH_VERBOSE") == "1"
 
+        val model = provider.effectiveModel
         val ruleRun = runBounded(config.maxConcurrency, units) { (rule, file) ->
+            val key = if (cache != null && model != null) {
+                CacheKeyBuilder.build(rule, file, docs, repoRoot, model, provider.allowedTools)
+            } else {
+                null
+            }
+            val cached = key?.let { cache!!.lookup(it) }
+            if (cached != null) {
+                recordStat(stats, rule.id, durationMs = 0, costUsd = 0.0, isHit = true)
+                if (verbose) {
+                    System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] cache hit")
+                }
+                return@runBounded cached
+            }
+
             val request = AgentRequest(
                 systemPrompt = Prompts.ruleSystemPrompt(),
                 rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), docs),
@@ -73,15 +96,18 @@ class Engine(
                 maxBudgetUsd = rule.maxBudgetUsd,
             )
             val result = provider.analyze(request)
-            recordStat(stats, rule.id, result.durationMs, result.costUsd)
+            recordStat(stats, rule.id, result.durationMs, result.costUsd, isHit = false)
             if (verbose) {
                 val ms = result.durationMs?.let { "${it}ms" } ?: "?ms"
                 val cost = result.costUsd?.let { "$%.4f".format(it) } ?: "?"
                 System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] $ms $cost")
             }
-            result.findings.map { it.copy(ruleId = rule.id) }
+            val stamped = result.findings.map { it.copy(ruleId = rule.id) }
+            if (key != null) cache!!.put(key, rule.id, file, stamped)
+            stamped
         }
 
+        cache?.pruneIfNeeded()
         printTimingSummary(stats)
 
         val validated = if (config.validator.enabled && ruleRun.findings.isNotEmpty()) {
@@ -98,22 +124,33 @@ class Engine(
             suppressedByBaseline = partition.suppressed.size,
             abandonedUnits = ruleRun.abandonedUnits,
             totalCostUsd = stats.values.sumOf { it.totalCost },
+            cacheHits = stats.values.sumOf { it.hits },
         )
+    }
+
+    private fun resolveCache(config: CacheConfig, repoRoot: Path): CacheStore? {
+        if (!config.enabled) return null
+        if (provider.effectiveModel == null) {
+            System.err.println("Reviewsmith: cache requires --model to be set; running without cache.")
+            return null
+        }
+        return CacheStore.forConfig(config, repoRoot)
     }
 
     private data class BoundedRun(val findings: List<Finding>, val abandonedUnits: Int)
 
-    private data class RuleStat(val maxMs: Long, val totalCost: Double, val units: Int)
+    private data class RuleStat(val maxMs: Long, val totalCost: Double, val units: Int, val hits: Int)
 
     private fun recordStat(
         stats: ConcurrentHashMap<String, RuleStat>,
         ruleId: String,
         durationMs: Long?,
         costUsd: Double?,
+        isHit: Boolean,
     ) {
-        val add = RuleStat(durationMs ?: 0, costUsd ?: 0.0, 1)
+        val add = RuleStat(durationMs ?: 0, costUsd ?: 0.0, 1, if (isHit) 1 else 0)
         stats.merge(ruleId, add) { a, b ->
-            RuleStat(maxOf(a.maxMs, b.maxMs), a.totalCost + b.totalCost, a.units + b.units)
+            RuleStat(maxOf(a.maxMs, b.maxMs), a.totalCost + b.totalCost, a.units + b.units, a.hits + b.hits)
         }
     }
 
@@ -121,8 +158,9 @@ class Engine(
         if (stats.isEmpty()) return
         System.err.println("Reviewsmith: timing summary (max wall-clock per rule, total cost):")
         stats.entries.sortedByDescending { it.value.maxMs }.forEach { (ruleId, s) ->
+            val hitSuffix = if (s.hits > 0) "  [cache hit: ${s.hits}]" else ""
             System.err.println(
-                "  %-32s %7dms max / %d unit(s)  $%.4f".format(ruleId, s.maxMs, s.units, s.totalCost),
+                "  %-32s %7dms max / %d unit(s)  $%.4f".format(ruleId, s.maxMs, s.units, s.totalCost) + hitSuffix,
             )
         }
         val totalCost = stats.values.sumOf { it.totalCost }

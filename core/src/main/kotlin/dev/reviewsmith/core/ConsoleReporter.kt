@@ -17,11 +17,13 @@ object ConsoleReporter {
         filesReviewed: Int,
         suppressedByBaseline: Int = 0,
         abandonedUnits: Int = 0,
+        cacheHits: Int = 0,
         useColor: Boolean = true,
     ): String {
         fun c(code: String) = if (useColor) code else ""
         val abandonSuffix =
             if (abandonedUnits > 0) "  |  $abandonedUnits unit(s) abandoned (timeout or error)" else ""
+        val cacheSuffix = if (cacheHits > 0) "  |  $cacheHits cache hit(s)" else ""
         val sb = StringBuilder()
         sb.appendLine()
         sb.appendLine("${c(BOLD)}Reviewsmith${c(RESET)} — reviewed $filesReviewed file(s)")
@@ -29,9 +31,9 @@ object ConsoleReporter {
 
         if (findings.isEmpty()) {
             if (suppressedByBaseline > 0) {
-                sb.appendLine("${c(BLUE)}No new findings.${c(RESET)} ($suppressedByBaseline suppressed by baseline)$abandonSuffix")
+                sb.appendLine("${c(BLUE)}No new findings.${c(RESET)} ($suppressedByBaseline suppressed by baseline)$abandonSuffix$cacheSuffix")
             } else {
-                sb.appendLine("${c(BLUE)}No findings.${c(RESET)}$abandonSuffix")
+                sb.appendLine("${c(BLUE)}No findings.${c(RESET)}$abandonSuffix$cacheSuffix")
             }
             return sb.toString()
         }
@@ -56,7 +58,7 @@ object ConsoleReporter {
         val warnings = findings.count { it.severity == Severity.WARNING }
         val infos = findings.count { it.severity == Severity.INFO }
         val baselineSuffix = if (suppressedByBaseline > 0) "  |  $suppressedByBaseline suppressed by baseline" else ""
-        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info$baselineSuffix$abandonSuffix")
+        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info$baselineSuffix$abandonSuffix$cacheSuffix")
         return sb.toString()
     }
 
