@@ -12,7 +12,12 @@ object ConsoleReporter {
     private val BOLD = "$ESC[1m"
     private val DIM = "$ESC[2m"
 
-    fun report(findings: List<Finding>, filesReviewed: Int, useColor: Boolean = true): String {
+    fun report(
+        findings: List<Finding>,
+        filesReviewed: Int,
+        suppressedByBaseline: Int = 0,
+        useColor: Boolean = true,
+    ): String {
         fun c(code: String) = if (useColor) code else ""
         val sb = StringBuilder()
         sb.appendLine()
@@ -20,7 +25,11 @@ object ConsoleReporter {
         sb.appendLine()
 
         if (findings.isEmpty()) {
-            sb.appendLine("${c(BLUE)}No findings.${c(RESET)}")
+            if (suppressedByBaseline > 0) {
+                sb.appendLine("${c(BLUE)}No new findings.${c(RESET)} ($suppressedByBaseline suppressed by baseline)")
+            } else {
+                sb.appendLine("${c(BLUE)}No findings.${c(RESET)}")
+            }
             return sb.toString()
         }
 
@@ -43,7 +52,8 @@ object ConsoleReporter {
         val errors = findings.count { it.severity == Severity.ERROR }
         val warnings = findings.count { it.severity == Severity.WARNING }
         val infos = findings.count { it.severity == Severity.INFO }
-        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info")
+        val baselineSuffix = if (suppressedByBaseline > 0) "  |  $suppressedByBaseline suppressed by baseline" else ""
+        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info$baselineSuffix")
         return sb.toString()
     }
 

@@ -9,6 +9,7 @@ import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.Callable
 import kotlin.system.exitProcess
@@ -17,6 +18,7 @@ import kotlin.system.exitProcess
     name = "reviewsmith",
     mixinStandardHelpOptions = true,
     version = ["reviewsmith 0.0.1"],
+    subcommands = [BaselineCommand::class],
     description = ["AI-agent code review that reasons about intent."],
 )
 class ReviewsmithCommand : Callable<Int> {
@@ -63,10 +65,31 @@ class ReviewsmithCommand : Callable<Int> {
             return 0
         }
 
-        println(ConsoleReporter.report(result.findings, result.filesReviewed, useColor = !noColor))
+        println(
+            ConsoleReporter.report(
+                result.findings,
+                result.filesReviewed,
+                suppressedByBaseline = result.suppressedByBaseline,
+                useColor = !noColor,
+            ),
+        )
+
+        maybePrintBaselineTip(repoRoot, result.findings.size)
 
         // Advisory in this milestone: always exit 0 unless something errored.
         return 0
+    }
+
+    private fun maybePrintBaselineTip(repoRoot: Path, findingCount: Int) {
+        if (findingCount == 0) return
+        val config = ReviewsmithConfig.load(repoRoot)
+        val effectiveScope = scope ?: config.scope.default
+        if (effectiveScope != "full") return
+        if (Files.exists(repoRoot.resolve(config.baseline.path))) return
+        System.err.println(
+            "Tip: run 'reviewsmith baseline' to snapshot these $findingCount finding(s) — " +
+                "future runs will show only new issues.",
+        )
     }
 }
 

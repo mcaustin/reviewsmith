@@ -11,13 +11,13 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import java.nio.file.Path
 
 data class RunResult(
     val findings: List<Finding>,
     val filesReviewed: Int,
     val rulesRun: Int,
+    val suppressedByBaseline: Int = 0,
 )
 
 /**
@@ -29,9 +29,9 @@ class Engine(
     private val provider: AgentProvider,
     private val scopeResolver: ScopeResolver = ScopeResolver(),
 ) {
-    private val json = Json { prettyPrint = true; ignoreUnknownKeys = true }
+    private val json = reviewsmithJson
 
-    fun run(repoRoot: Path, mode: String? = null): RunResult {
+    fun run(repoRoot: Path, mode: String? = null, baselineStore: BaselineStore? = null): RunResult {
         val config = ReviewsmithConfig.load(repoRoot)
         val effectiveMode = mode ?: config.scope.default
         val files = scopeResolver.resolve(repoRoot, config, effectiveMode)
@@ -40,6 +40,12 @@ class Engine(
 
         if (files.isEmpty()) {
             return RunResult(emptyList(), 0, rules.size)
+        }
+
+        val store = baselineStore ?: if (config.baseline.enabled) {
+            BaselineStore.resolveFromConfig(config, repoRoot)
+        } else {
+            BaselineStore.empty()
         }
 
         // One work unit per (rule × matching file), dispatched concurrently.
@@ -66,7 +72,8 @@ class Engine(
             raw
         }
 
-        return RunResult(validated, files.size, rules.size)
+        val partition = BaselineFilter.partition(validated, store)
+        return RunResult(partition.surfaced, files.size, rules.size, partition.suppressed.size)
     }
 
     /**

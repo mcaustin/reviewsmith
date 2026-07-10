@@ -30,6 +30,12 @@ data class RuleOverride(
 )
 
 @Serializable
+data class BaselineConfig(
+    val enabled: Boolean = true,
+    val path: String = "reviewsmith-baseline.json",
+)
+
+@Serializable
 data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
     val docs: DocsConfig = DocsConfig(),
@@ -38,6 +44,7 @@ data class ReviewsmithConfig(
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,
     val rules: Map<String, RuleOverride> = emptyMap(),
+    val baseline: BaselineConfig = BaselineConfig(),
 ) {
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =
