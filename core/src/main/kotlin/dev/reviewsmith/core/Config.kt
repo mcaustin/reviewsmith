@@ -43,6 +43,21 @@ data class CacheConfig(
     val maxEntries: Int = 500,
 )
 
+enum class FailOnLevel { NONE, WARNING, ERROR }
+
+@Serializable
+data class GateConfig(
+    val failOn: String = "none",
+    val failOnCategory: List<String> = emptyList(),
+    val onlyConfidence: String = "clear",
+) {
+    fun failOnLevel(): FailOnLevel = when (failOn.uppercase()) {
+        "WARNING" -> FailOnLevel.WARNING
+        "ERROR" -> FailOnLevel.ERROR
+        else -> FailOnLevel.NONE
+    }
+}
+
 @Serializable
 data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
@@ -55,6 +70,7 @@ data class ReviewsmithConfig(
     val rules: Map<String, RuleOverride> = emptyMap(),
     val baseline: BaselineConfig = BaselineConfig(),
     val cache: CacheConfig = CacheConfig(),
+    val gate: GateConfig = GateConfig(),
 ) {
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =

@@ -23,6 +23,8 @@ data class RunResult(
     val abandonedUnits: Int = 0,
     val totalCostUsd: Double? = null,
     val cacheHits: Int = 0,
+    val modelId: String? = null,
+    val rulesById: Map<String, Rule> = emptyMap(),
 )
 
 /**
@@ -47,9 +49,11 @@ class Engine(
         val files = scopeResolver.resolve(repoRoot, config, effectiveMode)
         val docs = DocContextBuilder.discover(repoRoot, config.docs)
         val rules = RuleResolver.resolve(repoRoot, config)
+        val rulesById = rules.associateBy { it.id }
+        val model = provider.effectiveModel
 
         if (files.isEmpty()) {
-            return RunResult(emptyList(), 0, rules.size)
+            return RunResult(emptyList(), 0, rules.size, modelId = model, rulesById = rulesById)
         }
 
         val cache = cacheStore ?: resolveCache(config.cache, repoRoot)
@@ -69,7 +73,6 @@ class Engine(
         val stats = ConcurrentHashMap<String, RuleStat>()
         val verbose = System.getenv("REVIEWSMITH_VERBOSE") == "1"
 
-        val model = provider.effectiveModel
         val ruleRun = runBounded(config.maxConcurrency, units) { (rule, file) ->
             val key = if (cache != null && model != null) {
                 CacheKeyBuilder.build(rule, file, docs, repoRoot, model, provider.allowedTools)
@@ -126,6 +129,8 @@ class Engine(
             abandonedUnits = ruleRun.abandonedUnits,
             totalCostUsd = stats.values.sumOf { it.totalCost },
             cacheHits = stats.values.sumOf { it.hits },
+            modelId = model,
+            rulesById = rulesById,
         )
     }
 

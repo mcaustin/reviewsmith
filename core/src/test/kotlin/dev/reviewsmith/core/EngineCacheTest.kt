@@ -141,17 +141,17 @@ class EngineCacheTest {
     @Test
     fun `cache disabled when provider has no model`(@TempDir repo: Path) {
         seedRepo(repo)
+        val calls = java.util.concurrent.atomic.AtomicInteger(0)
         val noModel = object : dev.reviewsmith.spi.AgentProvider {
             override val id = "no-model"
             override val effectiveModel: String? = null
-            var calls = 0
             override fun analyze(request: dev.reviewsmith.spi.AgentRequest): dev.reviewsmith.spi.AgentResult {
-                calls++
+                calls.incrementAndGet()
                 return dev.reviewsmith.spi.AgentResult(findings = canned())
             }
         }
         Engine(noModel).run(repo, mode = "full")
         Engine(noModel).run(repo, mode = "full")
-        assertEquals(4, noModel.calls, "without a model, cache is disabled and every unit runs live")
+        assertEquals(4, calls.get(), "without a model, cache is disabled and every unit runs live")
     }
 }

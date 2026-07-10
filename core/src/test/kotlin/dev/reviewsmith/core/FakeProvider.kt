@@ -4,6 +4,7 @@ import dev.reviewsmith.spi.AgentProvider
 import dev.reviewsmith.spi.AgentRequest
 import dev.reviewsmith.spi.AgentResult
 import dev.reviewsmith.spi.Finding
+import java.util.Collections
 
 /**
  * A deterministic [AgentProvider] for engine tests. Records every request and returns
@@ -20,7 +21,7 @@ class FakeProvider(
     override val effectiveModel: String = model
     override val allowedTools: String = "Read,Grep,Glob"
 
-    val requests = mutableListOf<AgentRequest>()
+    val requests: MutableList<AgentRequest> = Collections.synchronizedList(mutableListOf())
 
     override fun analyze(request: AgentRequest): AgentResult {
         requests.add(request)

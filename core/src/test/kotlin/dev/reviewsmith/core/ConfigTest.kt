@@ -82,6 +82,38 @@ class ConfigTest {
     }
 
     @Test
+    fun `default gate is fully advisory`() {
+        val gate = ReviewsmithConfig.parse("{}").gate
+        assertEquals(FailOnLevel.NONE, gate.failOnLevel())
+        assertTrue(gate.failOnCategory.isEmpty())
+    }
+
+    @Test
+    fun `gate failOn parses case-insensitively`() {
+        assertEquals(FailOnLevel.WARNING, ReviewsmithConfig.parse("gate:\n  failOn: warning").gate.failOnLevel())
+        assertEquals(FailOnLevel.ERROR, ReviewsmithConfig.parse("gate:\n  failOn: error").gate.failOnLevel())
+    }
+
+    @Test
+    fun `gate failOnCategory parses as a list`() {
+        val gate = ReviewsmithConfig.parse(
+            """
+            gate:
+              failOn: error
+              failOnCategory: [safety, auth]
+            """.trimIndent(),
+        ).gate
+        assertEquals(listOf("safety", "auth"), gate.failOnCategory)
+    }
+
+    @Test
+    fun `design-doc gate example parses without throwing`() {
+        val gate = ReviewsmithConfig.parse("gate:\n  failOn: warning\n  onlyConfidence: clear").gate
+        assertEquals(FailOnLevel.WARNING, gate.failOnLevel())
+        assertEquals("clear", gate.onlyConfidence)
+    }
+
+    @Test
     fun `per-rule maxBudgetUsd override parses`() {
         val c = ReviewsmithConfig.parse(
             """

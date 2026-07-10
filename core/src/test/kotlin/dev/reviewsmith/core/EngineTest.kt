@@ -141,6 +141,26 @@ class EngineTest {
     }
 
     @Test
+    fun `run result carries rulesById and modelId`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false")
+        val result = Engine(FakeProvider()).run(repo, mode = "full")
+        assertTrue(result.rulesById.containsKey("only-kt"), "rulesById maps rule ids")
+        assertEquals("fake-model", result.modelId)
+    }
+
+    @Test
+    fun `empty-files early return still carries rulesById and modelId`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("notes.txt"), "no source")
+        writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules")
+        val result = Engine(FakeProvider()).run(repo, mode = "full")
+        assertEquals(0, result.filesReviewed)
+        assertTrue(result.rulesById.containsKey("only-kt"))
+        assertEquals("fake-model", result.modelId)
+    }
+
+    @Test
     fun `per-rule docs are merged into the request and prompt`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("A.kt"), "class A")
         writeRule(

@@ -1,10 +1,9 @@
 package dev.reviewsmith.core
 
-import dev.reviewsmith.spi.Finding
 import dev.reviewsmith.spi.Severity
 
-object ConsoleReporter {
-    private val ESC = "\u001B"
+class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
+    private val ESC = ""
     private val RESET = "$ESC[0m"
     private val RED = "$ESC[31m"
     private val YELLOW = "$ESC[33m"
@@ -12,21 +11,18 @@ object ConsoleReporter {
     private val BOLD = "$ESC[1m"
     private val DIM = "$ESC[2m"
 
-    fun report(
-        findings: List<Finding>,
-        filesReviewed: Int,
-        suppressedByBaseline: Int = 0,
-        abandonedUnits: Int = 0,
-        cacheHits: Int = 0,
-        useColor: Boolean = true,
-    ): String {
+    override fun report(result: RunResult): String {
+        val findings = result.findings
+        val suppressedByBaseline = result.suppressedByBaseline
+        val abandonedUnits = result.abandonedUnits
+        val cacheHits = result.cacheHits
         fun c(code: String) = if (useColor) code else ""
         val abandonSuffix =
             if (abandonedUnits > 0) "  |  $abandonedUnits unit(s) abandoned (timeout or error)" else ""
         val cacheSuffix = if (cacheHits > 0) "  |  $cacheHits cache hit(s)" else ""
         val sb = StringBuilder()
         sb.appendLine()
-        sb.appendLine("${c(BOLD)}Reviewsmith${c(RESET)} — reviewed $filesReviewed file(s)")
+        sb.appendLine("${c(BOLD)}Reviewsmith${c(RESET)} — reviewed ${result.filesReviewed} file(s)")
         sb.appendLine()
 
         if (findings.isEmpty()) {

@@ -3,8 +3,13 @@ package dev.reviewsmith.cli
 import dev.reviewsmith.core.CacheStore
 import dev.reviewsmith.core.ConsoleReporter
 import dev.reviewsmith.core.Engine
+import dev.reviewsmith.core.GateDecision
+import dev.reviewsmith.core.GateEvaluator
+import dev.reviewsmith.core.JsonReporter
+import dev.reviewsmith.core.Reporter
 import dev.reviewsmith.core.ReviewsmithConfig
 import dev.reviewsmith.core.RuleResolver
+import dev.reviewsmith.core.SarifReporter
 import dev.reviewsmith.provider.claudecode.AgentUnavailableException
 import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
 import picocli.CommandLine
@@ -45,6 +50,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--refresh"], description = ["Bypass cache reads; write fresh results back to cache"])
     var refresh: Boolean = false
 
+    @Option(names = ["--format"], description = ["console (default) | json | sarif"])
+    var format: String = "console"
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -79,16 +87,12 @@ class ReviewsmithCommand : Callable<Int> {
             return 0
         }
 
-        println(
-            ConsoleReporter.report(
-                result.findings,
-                result.filesReviewed,
-                suppressedByBaseline = result.suppressedByBaseline,
-                abandonedUnits = result.abandonedUnits,
-                cacheHits = result.cacheHits,
-                useColor = !noColor,
-            ),
-        )
+        val reporter: Reporter = when (format.lowercase()) {
+            "json" -> JsonReporter(config)
+            "sarif" -> SarifReporter()
+            else -> ConsoleReporter(useColor = !noColor)
+        }
+        println(reporter.report(result))
 
         result.totalCostUsd?.let {
             val hits = if (result.cacheHits > 0) " (${result.cacheHits} cache hit(s))" else ""
@@ -97,7 +101,15 @@ class ReviewsmithCommand : Callable<Int> {
 
         maybePrintBaselineTip(repoRoot, result.findings.size)
 
-        // Advisory in this milestone: always exit 0 unless something errored.
+        val gateResult = GateEvaluator.evaluate(result.findings, config.gate, result.rulesById)
+        gateResult.warnings.forEach { System.err.println(it) }
+        val decision = gateResult.decision
+        if (decision is GateDecision.Fail) {
+            System.err.println(
+                "Reviewsmith: gate triggered — ${decision.triggeringFindings.size} finding(s) exceed the configured threshold.",
+            )
+            return 3
+        }
         return 0
     }
 
