@@ -24,17 +24,37 @@ data class ValidatorConfig(
 )
 
 @Serializable
+data class RuleOverride(
+    val enabled: Boolean? = null,
+    val severity: String? = null,
+)
+
+@Serializable
 data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
     val docs: DocsConfig = DocsConfig(),
     val validator: ValidatorConfig = ValidatorConfig(),
     val maxConcurrency: Int = 4,
+    val buildUponDefault: Boolean = true,
+    val ruleSources: List<String>? = null,
+    val rules: Map<String, RuleOverride> = emptyMap(),
 ) {
+    /** The rule sources to read, honoring an explicit list or the built-in default order. */
+    fun effectiveRuleSources(): List<String> =
+        ruleSources ?: listOf(SOURCE_SHIPPED, ".claude/rules", "reviewsmith/rules")
+
     companion object {
+        const val SOURCE_SHIPPED = "shipped"
+
         fun load(repoRoot: Path): ReviewsmithConfig {
             val file = repoRoot.resolve("reviewsmith.yml")
             if (!Files.exists(file)) return ReviewsmithConfig()
             val text = Files.readString(file)
+            return parse(text)
+        }
+
+        fun parse(text: String): ReviewsmithConfig {
+            if (text.isBlank()) return ReviewsmithConfig()
             return Yaml.default.decodeFromString(serializer(), text)
         }
     }

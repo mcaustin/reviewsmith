@@ -36,7 +36,7 @@ class Engine(
         val effectiveMode = mode ?: config.scope.default
         val files = scopeResolver.resolve(repoRoot, config, effectiveMode)
         val docs = DocContextBuilder.discover(repoRoot, config.docs)
-        val rules = RuleLoader.loadBundled()
+        val rules = RuleResolver.resolve(repoRoot, config)
 
         if (files.isEmpty()) {
             return RunResult(emptyList(), 0, rules.size)

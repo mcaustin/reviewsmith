@@ -2,6 +2,8 @@ package dev.reviewsmith.cli
 
 import dev.reviewsmith.core.ConsoleReporter
 import dev.reviewsmith.core.Engine
+import dev.reviewsmith.core.ReviewsmithConfig
+import dev.reviewsmith.core.RuleResolver
 import dev.reviewsmith.provider.claudecode.AgentUnavailableException
 import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
 import picocli.CommandLine
@@ -31,8 +33,24 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--no-color"], description = ["Disable ANSI color"])
     var noColor: Boolean = false
 
+    @Option(names = ["--list-rules"], description = ["List the resolved rules and exit (no agent calls)"])
+    var listRules: Boolean = false
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
+
+        if (listRules) {
+            val config = ReviewsmithConfig.load(repoRoot)
+            val rules = RuleResolver.resolve(repoRoot, config)
+            println("Rule sources: ${config.effectiveRuleSources().joinToString(", ")}")
+            println("Resolved ${rules.size} rule(s):")
+            for (r in rules) {
+                val globs = if (r.appliesTo.isEmpty()) "all files" else r.appliesTo.joinToString(", ")
+                println("  ${r.id}  [${r.severity}]  → $globs")
+            }
+            return 0
+        }
+
         System.err.println("Reviewsmith: analyzing ${scope ?: "changed"} files in $repoRoot ...")
 
         val provider = ClaudeCodeProvider(model = model)
