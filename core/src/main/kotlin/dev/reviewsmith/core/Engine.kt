@@ -85,11 +85,12 @@ class Engine(
                 return@runBounded cached
             }
 
+            val ruleDocs = (docs + rule.docs).distinct()
             val request = AgentRequest(
                 systemPrompt = Prompts.ruleSystemPrompt(),
-                rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), docs),
+                rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), ruleDocs),
                 targetFiles = listOf(file),
-                docRefs = docs,
+                docRefs = ruleDocs,
                 projectRoot = repoRoot.toString(),
                 outputSchema = Prompts.findingsSchema,
                 callTimeoutSeconds = config.callTimeoutSeconds,

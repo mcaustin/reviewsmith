@@ -141,6 +141,27 @@ class EngineTest {
     }
 
     @Test
+    fun `per-rule docs are merged into the request and prompt`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("A.kt"), "class A")
+        writeRule(
+            repo.resolve(".claude/rules"),
+            "with-docs.md",
+            "---\npaths:\n  - \"**/*.kt\"\ndocs:\n  - \"internal/guide.md\"\n---\n# rule\nbody",
+        )
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false",
+        )
+        val provider = FakeProvider()
+
+        Engine(provider).run(repo, mode = "full")
+
+        val ruleRequest = provider.requests.single()
+        assertTrue(ruleRequest.docRefs.contains("internal/guide.md"), "rule.docs reaches docRefs")
+        assertTrue(ruleRequest.rulePrompt.contains("internal/guide.md"), "rule.docs reaches the prompt")
+    }
+
+    @Test
     fun `no matching files yields no findings and no calls`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("notes.txt"), "no source here")
         writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
