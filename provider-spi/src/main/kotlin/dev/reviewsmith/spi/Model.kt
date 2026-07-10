@@ -31,6 +31,7 @@ data class AgentRequest(
     val docRefs: List<String>,
     val projectRoot: String,
     val outputSchema: String,
+    val callTimeoutSeconds: Long = 300,
 )
 
 data class AgentResult(

@@ -41,11 +41,22 @@ class ClaudeCodeProvider(
 
         // The prompt is passed on stdin; passing it positionally alongside an inline
         // --json-schema value confuses the CLI's argument parsing.
-        var output = runner.run(request.projectRoot, command, request.rulePrompt)
+        var output = runner.run(
+            request.projectRoot,
+            command,
+            request.rulePrompt,
+            timeoutSeconds = request.callTimeoutSeconds,
+        )
         var findings = parse(output)
-        // Retry once on empty/unparseable output.
+        // Retry once on empty/unparseable output. A timeout or budget-cap throws out of
+        // runner.run instead, so those never reach this retry.
         if (findings == null) {
-            output = runner.run(request.projectRoot, command, request.rulePrompt)
+            output = runner.run(
+                request.projectRoot,
+                command,
+                request.rulePrompt,
+                timeoutSeconds = request.callTimeoutSeconds,
+            )
             findings = parse(output)
         }
         return AgentResult(

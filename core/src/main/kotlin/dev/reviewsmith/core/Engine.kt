@@ -12,12 +12,14 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import kotlinx.serialization.encodeToString
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicInteger
 
 data class RunResult(
     val findings: List<Finding>,
     val filesReviewed: Int,
     val rulesRun: Int,
     val suppressedByBaseline: Int = 0,
+    val abandonedUnits: Int = 0,
 )
 
 /**
@@ -54,7 +56,7 @@ class Engine(
                 .map { file -> rule to file }
         }
 
-        val raw = runBounded(config.maxConcurrency, units) { (rule, file) ->
+        val ruleRun = runBounded(config.maxConcurrency, units) { (rule, file) ->
             val request = AgentRequest(
                 systemPrompt = Prompts.ruleSystemPrompt(),
                 rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), docs),
@@ -62,19 +64,28 @@ class Engine(
                 docRefs = docs,
                 projectRoot = repoRoot.toString(),
                 outputSchema = Prompts.findingsSchema,
+                callTimeoutSeconds = config.callTimeoutSeconds,
             )
             provider.analyze(request).findings.map { it.copy(ruleId = rule.id) }
         }
 
-        val validated = if (config.validator.enabled && raw.isNotEmpty()) {
-            validate(repoRoot, raw, docs)
+        val validated = if (config.validator.enabled && ruleRun.findings.isNotEmpty()) {
+            validate(repoRoot, ruleRun.findings, docs, config.callTimeoutSeconds)
         } else {
-            raw
+            ruleRun.findings
         }
 
         val partition = BaselineFilter.partition(validated, store)
-        return RunResult(partition.surfaced, files.size, rules.size, partition.suppressed.size)
+        return RunResult(
+            findings = partition.surfaced,
+            filesReviewed = files.size,
+            rulesRun = rules.size,
+            suppressedByBaseline = partition.suppressed.size,
+            abandonedUnits = ruleRun.abandonedUnits,
+        )
     }
+
+    private data class BoundedRun(val findings: List<Finding>, val abandonedUnits: Int)
 
     /**
      * Runs [task] over [items] with at most [concurrency] in flight and flattens the
@@ -86,9 +97,10 @@ class Engine(
         concurrency: Int,
         items: List<T>,
         task: suspend (T) -> List<Finding>,
-    ): List<Finding> = runBlocking(Dispatchers.IO) {
+    ): BoundedRun = runBlocking(Dispatchers.IO) {
         val semaphore = Semaphore(concurrency.coerceAtLeast(1))
-        coroutineScope {
+        val abandoned = AtomicInteger(0)
+        val findings = coroutineScope {
             items.map { item ->
                 async {
                     semaphore.withPermit {
@@ -96,13 +108,21 @@ class Engine(
                             task(item)
                         } catch (e: Exception) {
                             if (isAgentUnavailable(e)) throw e
-                            System.err.println("Reviewsmith: skipping a unit after error: ${e.message}")
+                            abandoned.incrementAndGet()
+                            System.err.println("Reviewsmith: skipping a unit after ${abandonKind(e)}: ${e.message}")
                             emptyList()
                         }
                     }
                 }
             }.awaitAll().flatten()
         }
+        BoundedRun(findings, abandoned.get())
+    }
+
+    private fun abandonKind(e: Throwable): String = when (e::class.simpleName) {
+        "AgentTimeoutException" -> "timeout"
+        "AgentBudgetExceededException" -> "budget cap"
+        else -> "error"
     }
 
     private fun isAgentUnavailable(e: Throwable): Boolean =
@@ -116,7 +136,12 @@ class Engine(
         return matchers.any { it(rel) }
     }
 
-    private fun validate(repoRoot: Path, raw: List<Finding>, docs: List<String>): List<Finding> {
+    private fun validate(
+        repoRoot: Path,
+        raw: List<Finding>,
+        docs: List<String>,
+        timeoutSeconds: Long,
+    ): List<Finding> {
         val rawJson = json.encodeToString(mapOf("findings" to raw))
         val request = AgentRequest(
             systemPrompt = Prompts.validatorSystemPrompt(),
@@ -125,10 +150,18 @@ class Engine(
             docRefs = docs,
             projectRoot = repoRoot.toString(),
             outputSchema = Prompts.validatorSchema,
+            callTimeoutSeconds = timeoutSeconds,
         )
-        val result = provider.analyze(request)
-        return result.findings.map {
-            if (it.ruleId.isBlank()) it.copy(ruleId = "reviewsmith") else it
+        return try {
+            provider.analyze(request).findings.map {
+                if (it.ruleId.isBlank()) it.copy(ruleId = "reviewsmith") else it
+            }
+        } catch (e: Exception) {
+            if (isAgentUnavailable(e)) throw e
+            System.err.println(
+                "Reviewsmith: validator abandoned after ${abandonKind(e)}: ${e.message}; keeping raw findings",
+            )
+            raw
         }
     }
 }

@@ -1,5 +1,8 @@
 package dev.reviewsmith.core
 
+import dev.reviewsmith.spi.AgentProvider
+import dev.reviewsmith.spi.AgentRequest
+import dev.reviewsmith.spi.AgentResult
 import dev.reviewsmith.spi.Finding
 import dev.reviewsmith.spi.Severity
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -8,6 +11,29 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
 import java.nio.file.Files
 import java.nio.file.Path
+
+private class TimeoutException(message: String) : RuntimeException(message)
+
+/** Throws on rule calls for files whose name is in [failFiles]; echoes findings otherwise. */
+private class PartialFailProvider(
+    private val failFiles: Set<String>,
+    private val findings: List<Finding>,
+    private val failValidator: Boolean = false,
+) : AgentProvider {
+    override val id = "partial-fail"
+
+    override fun analyze(request: AgentRequest): AgentResult {
+        val isValidator = request.systemPrompt.contains("skeptical", ignoreCase = true)
+        if (isValidator) {
+            if (failValidator) throw TimeoutException("validator timed out")
+            return AgentResult(findings = emptyList())
+        }
+        if (request.targetFiles.any { it.substringAfterLast('/') in failFiles }) {
+            throw TimeoutException("unit timed out")
+        }
+        return AgentResult(findings = findings)
+    }
+}
 
 class EngineTest {
 
@@ -63,6 +89,40 @@ class EngineTest {
 
         assertTrue(result.findings.isNotEmpty())
         assertTrue(result.findings.all { it.ruleId == "only-kt" }, "ruleId stamped from the rule")
+    }
+
+    @Test
+    fun `a failing unit is isolated and counted as abandoned`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false",
+        )
+        val canned = listOf(
+            Finding(ruleId = "", file = "B.kt", line = 1, severity = Severity.WARNING, message = "ok"),
+        )
+        val provider = PartialFailProvider(failFiles = setOf("A.kt"), findings = canned)
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        assertEquals(1, result.abandonedUnits, "the A.kt unit is abandoned")
+        assertTrue(result.findings.isNotEmpty(), "B.kt findings survive")
+        assertTrue(result.findings.all { it.file == "B.kt" })
+    }
+
+    @Test
+    fun `validator timeout keeps raw findings instead of crashing`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules")
+        val canned = listOf(
+            Finding(ruleId = "", file = "A.kt", line = 1, severity = Severity.ERROR, message = "boom"),
+        )
+        val provider = PartialFailProvider(failFiles = emptySet(), findings = canned, failValidator = true)
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        assertTrue(result.findings.isNotEmpty(), "raw findings are kept when the validator times out")
+        assertEquals(0, result.abandonedUnits, "validator failure is not a unit abandonment")
     }
 
     @Test

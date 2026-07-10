@@ -41,6 +41,7 @@ data class ReviewsmithConfig(
     val docs: DocsConfig = DocsConfig(),
     val validator: ValidatorConfig = ValidatorConfig(),
     val maxConcurrency: Int = 4,
+    val callTimeoutSeconds: Long = 300,
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,
     val rules: Map<String, RuleOverride> = emptyMap(),

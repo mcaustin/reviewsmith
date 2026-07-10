@@ -18,6 +18,12 @@ class ConfigTest {
     }
 
     @Test
+    fun `callTimeoutSeconds defaults to 300 and is configurable`() {
+        assertEquals(300L, ReviewsmithConfig.parse("{}").callTimeoutSeconds)
+        assertEquals(60L, ReviewsmithConfig.parse("callTimeoutSeconds: 60").callTimeoutSeconds)
+    }
+
+    @Test
     fun `blank or whitespace config yields defaults instead of throwing`() {
         assertEquals(4, ReviewsmithConfig.parse("").maxConcurrency)
         assertEquals(4, ReviewsmithConfig.parse("   \n  ").maxConcurrency)

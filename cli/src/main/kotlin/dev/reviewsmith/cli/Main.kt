@@ -70,6 +70,7 @@ class ReviewsmithCommand : Callable<Int> {
                 result.findings,
                 result.filesReviewed,
                 suppressedByBaseline = result.suppressedByBaseline,
+                abandonedUnits = result.abandonedUnits,
                 useColor = !noColor,
             ),
         )
