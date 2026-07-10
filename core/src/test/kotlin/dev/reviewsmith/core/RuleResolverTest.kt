@@ -51,12 +51,19 @@ class RuleResolverTest {
     }
 
     @Test
-    fun `shipped source loads bundled rules`(@TempDir repo: Path) {
+    fun `shipped source loads all bundled rules`(@TempDir repo: Path) {
         val config = ReviewsmithConfig(ruleSources = listOf("shipped"))
         val rules = RuleResolver.resolve(repo, config)
         val ids = rules.map { it.id }.toSet()
-        assertTrue(ids.contains("correctness-safety"))
-        assertTrue(ids.contains("evolution-safety"))
+        assertTrue(
+            ids.containsAll(
+                setOf(
+                    "correctness-safety", "simplification", "style-convention",
+                    "design-impact", "evolution-safety",
+                    "secrets-in-code", "pii-logging", "backward-compatible-migrations",
+                ),
+            ),
+        )
     }
 
     @Test

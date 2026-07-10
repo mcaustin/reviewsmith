@@ -16,7 +16,16 @@ import kotlin.io.path.readText
  * are applied last: disabled rules are dropped, severity overrides re-tune the rest.
  */
 object RuleResolver {
-    private val bundled = listOf("correctness-safety", "evolution-safety")
+    private val bundled = listOf(
+        "correctness-safety",
+        "simplification",
+        "style-convention",
+        "design-impact",
+        "evolution-safety",
+        "secrets-in-code",
+        "pii-logging",
+        "backward-compatible-migrations",
+    )
 
     fun resolve(repoRoot: Path, config: ReviewsmithConfig): List<Rule> {
         val byId = LinkedHashMap<String, Rule>()
