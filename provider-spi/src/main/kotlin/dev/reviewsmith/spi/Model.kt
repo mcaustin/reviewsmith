@@ -33,6 +33,7 @@ data class AgentRequest(
     val projectRoot: String,
     val outputSchema: String,
     val callTimeoutSeconds: Long = 300,
+    val maxBudgetUsd: Double? = null,
 )
 
 data class AgentResult(

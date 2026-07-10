@@ -14,6 +14,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
+import java.util.Locale
 
 /**
  * An [AgentProvider] that shells out to the local `claude` CLI in headless mode with a
@@ -38,15 +39,20 @@ class ClaudeCodeProvider(
             add("--allowedTools"); add("Read,Grep,Glob")
             add("--add-dir"); add(request.projectRoot)
             if (model != null) { add("--model"); add(model) }
+            if (request.maxBudgetUsd != null) {
+                add("--max-budget-usd"); add("%.6f".format(Locale.ROOT, request.maxBudgetUsd))
+            }
         }
 
         // The prompt is passed on stdin; passing it positionally alongside an inline
         // --json-schema value confuses the CLI's argument parsing.
+        val budgetInEffect = request.maxBudgetUsd != null
         var output = runner.run(
             request.projectRoot,
             command,
             request.rulePrompt,
             timeoutSeconds = request.callTimeoutSeconds,
+            budgetInEffect = budgetInEffect,
         )
         var findings = parse(output)
         // Retry once on empty/unparseable output. A timeout or budget-cap throws out of
@@ -57,6 +63,7 @@ class ClaudeCodeProvider(
                 command,
                 request.rulePrompt,
                 timeoutSeconds = request.callTimeoutSeconds,
+                budgetInEffect = budgetInEffect,
             )
             findings = parse(output)
         }

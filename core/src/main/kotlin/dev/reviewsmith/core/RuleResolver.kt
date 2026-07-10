@@ -74,6 +74,9 @@ object RuleResolver {
                 rule.severity
             }
         } ?: rule.severity
-        return rule.copy(severity = severity)
+        return rule.copy(
+            severity = severity,
+            maxBudgetUsd = override.maxBudgetUsd ?: rule.maxBudgetUsd,
+        )
     }
 }

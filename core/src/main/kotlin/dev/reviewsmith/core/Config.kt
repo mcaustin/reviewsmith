@@ -27,6 +27,7 @@ data class ValidatorConfig(
 data class RuleOverride(
     val enabled: Boolean? = null,
     val severity: String? = null,
+    val maxBudgetUsd: Double? = null,
 )
 
 @Serializable

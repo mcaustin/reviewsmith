@@ -32,6 +32,10 @@ new behavior?* Flag issues such as:
 
 **Discipline — avoid false positives:**
 
+- Before searching, plan which identifiers to look for. **Use Grep or Glob at most 8 times
+  total for a single file review.** If you reach this limit before confirming a caller
+  issue, report the concern as a *question to verify* rather than an asserted defect —
+  do not keep exploring.
 - Searching for callers and sibling paths is **mandatory before flagging**. Do not assert
   "callers are not updated" without having searched for them. If you cannot search the
   repository, report as a *question to verify*, not an asserted defect.

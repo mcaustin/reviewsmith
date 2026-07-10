@@ -70,6 +70,7 @@ class Engine(
                 projectRoot = repoRoot.toString(),
                 outputSchema = Prompts.findingsSchema,
                 callTimeoutSeconds = config.callTimeoutSeconds,
+                maxBudgetUsd = rule.maxBudgetUsd,
             )
             val result = provider.analyze(request)
             recordStat(stats, rule.id, result.durationMs, result.costUsd)

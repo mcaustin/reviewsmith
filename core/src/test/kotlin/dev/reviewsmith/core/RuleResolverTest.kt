@@ -99,6 +99,24 @@ class RuleResolverTest {
     }
 
     @Test
+    fun `config maxBudgetUsd override wins over rule frontmatter`(@TempDir repo: Path) {
+        writeRule(repo.resolve(".claude/rules"), "kotlin.md", "---\nmaxBudgetUsd: 0.10\n---\nbody")
+        val config = ReviewsmithConfig(
+            ruleSources = listOf(".claude/rules"),
+            rules = mapOf("kotlin" to RuleOverride(maxBudgetUsd = 0.02)),
+        )
+        val rules = RuleResolver.resolve(repo, config)
+        assertEquals(0.02, rules[0].maxBudgetUsd!!, 1e-9)
+    }
+
+    @Test
+    fun `rule frontmatter maxBudgetUsd survives when no override`(@TempDir repo: Path) {
+        writeRule(repo.resolve(".claude/rules"), "kotlin.md", "---\nmaxBudgetUsd: 0.10\n---\nbody")
+        val config = ReviewsmithConfig(ruleSources = listOf(".claude/rules"))
+        assertEquals(0.10, RuleResolver.resolve(repo, config)[0].maxBudgetUsd!!, 1e-9)
+    }
+
+    @Test
     fun `default source order includes shipped then repo dirs`(@TempDir repo: Path) {
         writeRule(repo.resolve(".claude/rules"), "custom.md", "---\n---\nbody")
         val rules = RuleResolver.resolve(repo, ReviewsmithConfig())

@@ -80,4 +80,16 @@ class ConfigTest {
         assertFalse(c.rules.getValue("kotlin").enabled!!)
         assertEquals("error", c.rules.getValue("testing").severity)
     }
+
+    @Test
+    fun `per-rule maxBudgetUsd override parses`() {
+        val c = ReviewsmithConfig.parse(
+            """
+            rules:
+              design-impact:
+                maxBudgetUsd: 0.05
+            """.trimIndent(),
+        )
+        assertEquals(0.05, c.rules.getValue("design-impact").maxBudgetUsd!!, 1e-9)
+    }
 }

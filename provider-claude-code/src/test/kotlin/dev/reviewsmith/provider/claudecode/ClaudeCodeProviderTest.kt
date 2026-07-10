@@ -2,10 +2,12 @@ package dev.reviewsmith.provider.claudecode
 
 import dev.reviewsmith.spi.AgentRequest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertThrows
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
+import java.util.Locale
 
 class ClaudeCodeProviderTest {
 
@@ -24,6 +26,9 @@ class ClaudeCodeProviderTest {
         var calls = 0
             private set
         val timeouts = mutableListOf<Long>()
+        val budgets = mutableListOf<Boolean>()
+        var lastCommand: List<String> = emptyList()
+            private set
 
         override fun run(
             workingDir: String,
@@ -33,6 +38,8 @@ class ClaudeCodeProviderTest {
             budgetInEffect: Boolean,
         ): String {
             timeouts.add(timeoutSeconds)
+            budgets.add(budgetInEffect)
+            lastCommand = command
             val step = steps[calls]
             calls++
             return step()
@@ -118,5 +125,50 @@ class ClaudeCodeProviderTest {
         val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ "[]" }, { envelope("[]") }))).analyze(request())
         assertNull(result.durationMs)
         assertNull(result.costUsd)
+    }
+
+    @Test
+    fun `max-budget-usd flag is added with fixed-decimal format when set`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner).analyze(request().copy(maxBudgetUsd = 0.05))
+
+        val cmd = runner.lastCommand
+        val i = cmd.indexOf("--max-budget-usd")
+        assertTrue(i >= 0, "flag present: $cmd")
+        assertEquals("0.050000", cmd[i + 1], "fixed-decimal, no scientific notation")
+        assertEquals(listOf(true), runner.budgets)
+    }
+
+    @Test
+    fun `no max-budget-usd flag when unset`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner).analyze(request())
+
+        assertFalse(runner.lastCommand.contains("--max-budget-usd"))
+        assertEquals(listOf(false), runner.budgets)
+    }
+
+    @Test
+    fun `small budget avoids scientific notation`() {
+        val runner = ScriptedRunner(listOf({ envelope("[]") }))
+        ClaudeCodeProvider(runner = runner).analyze(request().copy(maxBudgetUsd = 0.0000001))
+
+        val cmd = runner.lastCommand
+        assertEquals("0.000000", cmd[cmd.indexOf("--max-budget-usd") + 1])
+    }
+
+    @Test
+    fun `budget uses a dot decimal separator under a comma-decimal locale`() {
+        val original = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.GERMANY)
+            val runner = ScriptedRunner(listOf({ envelope("[]") }))
+            ClaudeCodeProvider(runner = runner).analyze(request().copy(maxBudgetUsd = 0.05))
+
+            val cmd = runner.lastCommand
+            assertEquals("0.050000", cmd[cmd.indexOf("--max-budget-usd") + 1])
+        } finally {
+            Locale.setDefault(original)
+        }
     }
 }

@@ -2,10 +2,27 @@ package dev.reviewsmith.core
 
 import dev.reviewsmith.spi.Severity
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class RuleParserTest {
+
+    @Test
+    fun `maxBudgetUsd parses from frontmatter`() {
+        val rule = RuleParser.parse("x", "---\nmaxBudgetUsd: 0.05\n---\nbody")
+        assertEquals(0.05, rule.maxBudgetUsd!!, 1e-9)
+    }
+
+    @Test
+    fun `absent maxBudgetUsd is null`() {
+        assertNull(RuleParser.parse("x", "---\nseverity: warning\n---\nbody").maxBudgetUsd)
+    }
+
+    @Test
+    fun `malformed maxBudgetUsd is null`() {
+        assertNull(RuleParser.parse("x", "---\nmaxBudgetUsd: cheap\n---\nbody").maxBudgetUsd)
+    }
 
     @Test
     fun `maps claude-rules frontmatter aliases`() {

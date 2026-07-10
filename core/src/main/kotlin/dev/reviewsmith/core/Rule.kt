@@ -10,6 +10,7 @@ data class Rule(
     val docs: List<String>,
     val tags: List<String>,
     val body: String,
+    val maxBudgetUsd: Double? = null,
 )
 
 /**
@@ -46,8 +47,15 @@ object RuleParser {
         val appliesTo = splitList(frontmatter["appliesTo"] ?: frontmatter["paths"])
         val docs = splitList(frontmatter["docs"])
         val tags = splitList(frontmatter["tags"])
+        val maxBudgetUsd = frontmatter["maxBudgetUsd"]?.let { raw ->
+            raw.toDoubleOrNull().also {
+                if (it == null) System.err.println(
+                    "Reviewsmith: rule '$id': invalid maxBudgetUsd value \"$raw\" — no budget cap applied.",
+                )
+            }
+        }
 
-        return Rule(id, name, severity, appliesTo, docs, tags, body)
+        return Rule(id, name, severity, appliesTo, docs, tags, body, maxBudgetUsd)
     }
 
     private fun firstHeading(body: String): String? =

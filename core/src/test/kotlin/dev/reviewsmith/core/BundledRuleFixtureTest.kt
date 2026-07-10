@@ -1,5 +1,6 @@
 package dev.reviewsmith.core
 
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.io.TempDir
@@ -60,6 +61,14 @@ class BundledRuleFixtureTest {
                 ),
             ),
             "expected all 8 bundled rule ids, got $ids",
+        )
+    }
+
+    @Test
+    fun `design-impact ships without a baked-in budget cap`(@TempDir repo: Path) {
+        assertNull(
+            shippedRules(repo).getValue("design-impact").maxBudgetUsd,
+            "no maxBudgetUsd value should be baked in until empirical cost data is collected",
         )
     }
 
