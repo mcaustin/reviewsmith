@@ -2,6 +2,7 @@ plugins {
     kotlin("jvm")
     `java-gradle-plugin`
     `maven-publish`
+    id("com.gradle.plugin-publish") version "1.3.1"
 }
 
 kotlin {
@@ -37,13 +38,20 @@ tasks.named("processResources") {
     dependsOn(bundleCli)
 }
 
+tasks.withType<AbstractArchiveTask>().configureEach {
+    dependsOn(bundleCli)
+}
+
 gradlePlugin {
+    website.set("https://github.com/mcaustin/reviewsmith")
+    vcsUrl.set("https://github.com/mcaustin/reviewsmith.git")
     plugins {
         create("reviewsmith") {
-            id = "dev.reviewsmith"
+            id = "io.github.mcaustin.reviewsmith"
             implementationClass = "dev.reviewsmith.gradle.ReviewsmithPlugin"
             displayName = "Reviewsmith"
-            description = "AI-agent code review that reasons about intent"
+            description = "AI-agent code review that reasons about intent — a linter for what static analysis can't express."
+            tags.set(listOf("code-review", "static-analysis", "ai", "linter", "kotlin"))
         }
     }
 }

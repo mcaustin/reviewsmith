@@ -15,7 +15,7 @@ class AttachToCheckTest {
             """
             plugins {
                 base
-                id("dev.reviewsmith")
+                id("io.github.mcaustin.reviewsmith")
             }
             $attachLine
             """.trimIndent(),

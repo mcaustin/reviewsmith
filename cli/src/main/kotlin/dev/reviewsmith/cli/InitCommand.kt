@@ -35,7 +35,7 @@ class InitCommand : Callable<Int> {
             Files.writeString(configPath, STARTER_CONFIG)
             println("Wrote ${configPath.fileName} to $repoRoot")
         } else {
-            println("# Add to your build.gradle.kts (JitPack — no mavenLocal needed):")
+            println("# Add to your build.gradle.kts plugins { } block:")
             println(pluginSnippet())
             println()
             println("# Starter reviewsmith.yml (run 'reviewsmith init --apply' to write it):")
@@ -50,11 +50,9 @@ class InitCommand : Callable<Int> {
     }
 
     private fun pluginSnippet(): String = """
-        buildscript {
-            repositories { maven(url = "https://jitpack.io") }
-            dependencies { classpath("com.github.mcaustin.reviewsmith:gradle-plugin:${BuildInfo.version}") }
+        plugins {
+            id("io.github.mcaustin.reviewsmith") version "${BuildInfo.version}"
         }
-        apply(plugin = "dev.reviewsmith")
     """.trimIndent()
 
     private companion object {

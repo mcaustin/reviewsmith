@@ -97,22 +97,15 @@ The `[clear]` / `[ambiguous]` tag is the validator's confidence. Machine formats
 The plugin registers a `reviewsmith` task that runs the bundled CLI in a separate JVM
 (configuration-cache-safe). It is **advisory** and **not** wired into `check` by default.
 
-Reviewsmith is distributed via [JitPack](https://jitpack.io) (proxied through your Maven
-mirror if you have one). Because JitPack cannot serve a Gradle **plugin marker**, apply it
-with the `buildscript` + `apply` form rather than the `plugins { }` DSL:
+Reviewsmith is published to the [Gradle Plugin Portal](https://plugins.gradle.org), so any
+build that resolves plugins from the Portal (directly, or through a mirror that proxies it)
+can apply it with the standard `plugins { }` DSL — no `settings.gradle.kts` change:
 
 ```kotlin
 // build.gradle.kts
-buildscript {
-    repositories {
-        maven(url = "https://jitpack.io")
-    }
-    dependencies {
-        classpath("com.github.mcaustin.reviewsmith:gradle-plugin:0.0.1")
-    }
+plugins {
+    id("io.github.mcaustin.reviewsmith") version "0.1.0"
 }
-
-apply(plugin = "dev.reviewsmith")
 
 reviewsmith {
     scope.set("changed")           // "changed" (default) | "full"
@@ -125,10 +118,6 @@ Then:
 ```bash
 ./gradlew reviewsmith
 ```
-
-> The clean `plugins { id("dev.reviewsmith") }` DSL will work once Reviewsmith is published
-> to the Gradle Plugin Portal (which serves the plugin marker JitPack can't). Until then,
-> use the `buildscript` + `apply` form above.
 
 ---
 
