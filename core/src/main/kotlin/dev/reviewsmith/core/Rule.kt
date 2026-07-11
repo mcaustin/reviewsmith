@@ -11,6 +11,7 @@ data class Rule(
     val tags: List<String>,
     val body: String,
     val maxBudgetUsd: Double? = null,
+    val callTimeoutSeconds: Long? = null,
 )
 
 /**
@@ -54,8 +55,15 @@ object RuleParser {
                 )
             }
         }
+        val callTimeoutSeconds = frontmatter["callTimeoutSeconds"]?.let { raw ->
+            raw.toLongOrNull().also {
+                if (it == null) System.err.println(
+                    "Reviewsmith: rule '$id': invalid callTimeoutSeconds value \"$raw\" — using the global timeout.",
+                )
+            }
+        }
 
-        return Rule(id, name, severity, appliesTo, docs, tags, body, maxBudgetUsd)
+        return Rule(id, name, severity, appliesTo, docs, tags, body, maxBudgetUsd, callTimeoutSeconds)
     }
 
     private fun firstHeading(body: String): String? =

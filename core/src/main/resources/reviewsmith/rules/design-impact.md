@@ -3,6 +3,8 @@ name: Design & Cross-cutting Impact
 severity: warning
 appliesTo: ["**/*.kt", "**/*.java", "**/*.ts", "**/*.tsx", "**/*.proto"]
 tags: ["design"]
+callTimeoutSeconds: 180
+maxBudgetUsd: 1.00
 ---
 
 You are a senior engineer reviewing changed code for **design and cross-cutting impact**:

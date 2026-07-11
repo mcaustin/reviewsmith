@@ -117,6 +117,23 @@ class RuleResolverTest {
     }
 
     @Test
+    fun `config callTimeoutSeconds override wins over rule frontmatter`(@TempDir repo: Path) {
+        writeRule(repo.resolve(".claude/rules"), "kotlin.md", "---\ncallTimeoutSeconds: 180\n---\nbody")
+        val config = ReviewsmithConfig(
+            ruleSources = listOf(".claude/rules"),
+            rules = mapOf("kotlin" to RuleOverride(callTimeoutSeconds = 90)),
+        )
+        assertEquals(90L, RuleResolver.resolve(repo, config)[0].callTimeoutSeconds)
+    }
+
+    @Test
+    fun `rule frontmatter callTimeoutSeconds survives when no override`(@TempDir repo: Path) {
+        writeRule(repo.resolve(".claude/rules"), "kotlin.md", "---\ncallTimeoutSeconds: 120\n---\nbody")
+        val config = ReviewsmithConfig(ruleSources = listOf(".claude/rules"))
+        assertEquals(120L, RuleResolver.resolve(repo, config)[0].callTimeoutSeconds)
+    }
+
+    @Test
     fun `default source order includes shipped then repo dirs`(@TempDir repo: Path) {
         writeRule(repo.resolve(".claude/rules"), "custom.md", "---\n---\nbody")
         val rules = RuleResolver.resolve(repo, ReviewsmithConfig())

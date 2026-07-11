@@ -77,6 +77,7 @@ object RuleResolver {
         return rule.copy(
             severity = severity,
             maxBudgetUsd = override.maxBudgetUsd ?: rule.maxBudgetUsd,
+            callTimeoutSeconds = override.callTimeoutSeconds ?: rule.callTimeoutSeconds,
         )
     }
 }

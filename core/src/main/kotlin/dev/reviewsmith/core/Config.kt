@@ -32,6 +32,7 @@ data class RuleOverride(
     val enabled: Boolean? = null,
     val severity: String? = null,
     val maxBudgetUsd: Double? = null,
+    val callTimeoutSeconds: Long? = null,
 )
 
 @Serializable
@@ -80,7 +81,7 @@ data class ReviewsmithConfig(
     val scope: ScopeConfig = ScopeConfig(),
     val docs: DocsConfig = DocsConfig(),
     val validator: ValidatorConfig = ValidatorConfig(),
-    val maxConcurrency: Int = 4,
+    val maxConcurrency: Int = 6,
     val callTimeoutSeconds: Long = 300,
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,

@@ -25,6 +25,21 @@ class RuleParserTest {
     }
 
     @Test
+    fun `callTimeoutSeconds parses from frontmatter`() {
+        assertEquals(180L, RuleParser.parse("x", "---\ncallTimeoutSeconds: 180\n---\nbody").callTimeoutSeconds)
+    }
+
+    @Test
+    fun `absent callTimeoutSeconds is null`() {
+        assertNull(RuleParser.parse("x", "---\nseverity: warning\n---\nbody").callTimeoutSeconds)
+    }
+
+    @Test
+    fun `malformed callTimeoutSeconds is null`() {
+        assertNull(RuleParser.parse("x", "---\ncallTimeoutSeconds: soon\n---\nbody").callTimeoutSeconds)
+    }
+
+    @Test
     fun `maps claude-rules frontmatter aliases`() {
         // Mirrors toast-publish/.claude/rules/kotlin.md: block-list `paths`, no name/severity.
         val text =

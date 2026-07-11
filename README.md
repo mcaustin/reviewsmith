@@ -165,7 +165,7 @@ scope:
 docs:      { autoDiscover: true, maxDocs: 8 }   # feed project docs to the agent as context
 validator: { enabled: true, timeoutSeconds: 600, chunkSize: 20 }
 agent:     { isolation: strict }  # strict = hermetic (default) | local = apply your ~/.claude config
-maxConcurrency: 4                 # tunes wall-clock (rate-limit risk), not cost/quality
+maxConcurrency: 6                 # tunes wall-clock (rate-limit risk), not cost/quality
 callTimeoutSeconds: 300           # per-agent-call timeout; a slow call is abandoned, not hung
 
 cache: { enabled: false, dir: .reviewsmith/cache, maxEntries: 500 }  # opt-in; requires --model

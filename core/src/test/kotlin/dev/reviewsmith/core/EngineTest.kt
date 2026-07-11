@@ -35,6 +35,35 @@ private class PartialFailProvider(
     }
 }
 
+/**
+ * One rule unit (for [slowFile]) blocks on a latch; every other unit returns [findings]
+ * immediately. When a validator call arrives, it records whether the slow unit is still
+ * blocked (proving overlap) and then releases the latch so the run can finish.
+ */
+private class OverlapProbeProvider(
+    private val slowFile: String,
+    private val findings: List<Finding>,
+) : AgentProvider {
+    override val id = "overlap-probe"
+    private val latch = java.util.concurrent.CountDownLatch(1)
+    private val slowUnitFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+    val validatorStartedBeforeSlowUnitFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+
+    override fun analyze(request: AgentRequest): AgentResult {
+        val isValidator = request.systemPrompt.contains("skeptical", ignoreCase = true)
+        if (isValidator) {
+            if (!slowUnitFinished.get()) validatorStartedBeforeSlowUnitFinished.set(true)
+            latch.countDown()
+            return AgentResult(findings = emptyList())
+        }
+        if (request.targetFiles.any { it.substringAfterLast('/') == slowFile }) {
+            latch.await(10, java.util.concurrent.TimeUnit.SECONDS)
+            slowUnitFinished.set(true)
+        }
+        return AgentResult(findings = findings)
+    }
+}
+
 class EngineTest {
 
     private fun seedRepo(repo: Path) {
@@ -179,6 +208,44 @@ class EngineTest {
         val ruleRequest = provider.requests.single()
         assertTrue(ruleRequest.docRefs.contains("internal/guide.md"), "rule.docs reaches docRefs")
         assertTrue(ruleRequest.rulePrompt.contains("internal/guide.md"), "rule.docs reaches the prompt")
+    }
+
+    @Test
+    fun `rule callTimeoutSeconds reaches the agent request`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("A.kt"), "class A")
+        writeRule(
+            repo.resolve(".claude/rules"),
+            "capped.md",
+            "---\npaths:\n  - \"**/*.kt\"\ncallTimeoutSeconds: 90\n---\nbody",
+        )
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\ncallTimeoutSeconds: 300",
+        )
+        val provider = FakeProvider()
+
+        Engine(provider).run(repo, mode = "full")
+
+        assertEquals(90L, provider.requests.single().callTimeoutSeconds, "rule timeout overrides the global one")
+    }
+
+    @Test
+    fun `validator overlaps the rule tail instead of waiting for the barrier`(@TempDir repo: Path) {
+        for (i in 1..6) Files.writeString(repo.resolve("F$i.kt"), "class F$i")
+        writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  chunkSize: 1\nmaxConcurrency: 6",
+        )
+        val canned = listOf(Finding(ruleId = "", file = "F.kt", line = 1, severity = Severity.ERROR, message = "m"))
+        val provider = OverlapProbeProvider(slowFile = "F1.kt", findings = canned)
+
+        Engine(provider).run(repo, mode = "full")
+
+        assertTrue(
+            provider.validatorStartedBeforeSlowUnitFinished.get(),
+            "a validator chunk should run while the slow rule unit is still blocked",
+        )
     }
 
     @Test

@@ -1,5 +1,6 @@
 package dev.reviewsmith.core
 
+import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -65,11 +66,21 @@ class BundledRuleFixtureTest {
     }
 
     @Test
-    fun `design-impact ships without a baked-in budget cap`(@TempDir repo: Path) {
-        assertNull(
-            shippedRules(repo).getValue("design-impact").maxBudgetUsd,
-            "no maxBudgetUsd value should be baked in until empirical cost data is collected",
-        )
+    fun `heavy rules ship with cost and time guardrails`(@TempDir repo: Path) {
+        val rules = shippedRules(repo)
+        val correctness = rules.getValue("correctness-safety")
+        val design = rules.getValue("design-impact")
+        assertEquals(180L, correctness.callTimeoutSeconds)
+        assertEquals(1.25, correctness.maxBudgetUsd!!, 1e-9)
+        assertEquals(180L, design.callTimeoutSeconds)
+        assertEquals(1.00, design.maxBudgetUsd!!, 1e-9)
+    }
+
+    @Test
+    fun `cheap rules ship without guardrails`(@TempDir repo: Path) {
+        val secrets = shippedRules(repo).getValue("secrets-in-code")
+        assertNull(secrets.callTimeoutSeconds)
+        assertNull(secrets.maxBudgetUsd)
     }
 
     @Test

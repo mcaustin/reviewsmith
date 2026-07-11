@@ -4,10 +4,14 @@ import dev.reviewsmith.spi.AgentProvider
 import dev.reviewsmith.spi.AgentRequest
 import dev.reviewsmith.spi.Confidence
 import dev.reviewsmith.spi.Finding
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -74,7 +78,7 @@ class Engine(
         val stats = ConcurrentHashMap<String, RuleStat>()
         val verbose = System.getenv("REVIEWSMITH_VERBOSE") == "1"
 
-        val ruleRun = runBounded(config.maxConcurrency, units) { (rule, file) ->
+        val runUnit: suspend (Pair<Rule, String>) -> List<Finding> = { (rule, file) ->
             val key = if (cache != null && model != null) {
                 CacheKeyBuilder.build(rule, file, docs, repoRoot, model, provider.allowedTools)
             } else {
@@ -86,48 +90,44 @@ class Engine(
                 if (verbose) {
                     System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] cache hit")
                 }
-                return@runBounded cached
+                cached
+            } else {
+                val ruleDocs = (docs + rule.docs).distinct()
+                val request = AgentRequest(
+                    systemPrompt = Prompts.ruleSystemPrompt(),
+                    rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), ruleDocs),
+                    targetFiles = listOf(file),
+                    docRefs = ruleDocs,
+                    projectRoot = repoRoot.toString(),
+                    outputSchema = Prompts.findingsSchema,
+                    callTimeoutSeconds = rule.callTimeoutSeconds ?: config.callTimeoutSeconds,
+                    maxBudgetUsd = rule.maxBudgetUsd,
+                )
+                val result = provider.analyze(request)
+                recordStat(stats, rule.id, result.durationMs, result.costUsd, isHit = false)
+                if (verbose) {
+                    val ms = result.durationMs?.let { "${it}ms" } ?: "?ms"
+                    val cost = result.costUsd?.let { "$%.4f".format(it) } ?: "?"
+                    System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] $ms $cost")
+                }
+                val stamped = result.findings.map { it.copy(ruleId = rule.id) }
+                if (key != null) cache!!.put(key, rule.id, file, stamped)
+                stamped
             }
-
-            val ruleDocs = (docs + rule.docs).distinct()
-            val request = AgentRequest(
-                systemPrompt = Prompts.ruleSystemPrompt(),
-                rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), ruleDocs),
-                targetFiles = listOf(file),
-                docRefs = ruleDocs,
-                projectRoot = repoRoot.toString(),
-                outputSchema = Prompts.findingsSchema,
-                callTimeoutSeconds = config.callTimeoutSeconds,
-                maxBudgetUsd = rule.maxBudgetUsd,
-            )
-            val result = provider.analyze(request)
-            recordStat(stats, rule.id, result.durationMs, result.costUsd, isHit = false)
-            if (verbose) {
-                val ms = result.durationMs?.let { "${it}ms" } ?: "?ms"
-                val cost = result.costUsd?.let { "$%.4f".format(it) } ?: "?"
-                System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] $ms $cost")
-            }
-            val stamped = result.findings.map { it.copy(ruleId = rule.id) }
-            if (key != null) cache!!.put(key, rule.id, file, stamped)
-            stamped
         }
+
+        val pipelined = runPipelined(config, docs, repoRoot, units, runUnit)
 
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
 
-        val validated = if (config.validator.enabled && ruleRun.findings.isNotEmpty()) {
-            validate(repoRoot, ruleRun.findings, docs, config.validator, config.maxConcurrency)
-        } else {
-            ruleRun.findings
-        }
-
-        val partition = BaselineFilter.partition(validated, store)
+        val partition = BaselineFilter.partition(pipelined.findings, store)
         return RunResult(
             findings = partition.surfaced,
             filesReviewed = files.size,
             rulesRun = rules.size,
             suppressedByBaseline = partition.suppressed.size,
-            abandonedUnits = ruleRun.abandonedUnits,
+            abandonedUnits = pipelined.abandonedUnits,
             totalCostUsd = stats.values.sumOf { it.totalCost },
             cacheHits = stats.values.sumOf { it.hits },
             modelId = model,
@@ -175,35 +175,86 @@ class Engine(
     }
 
     /**
-     * Runs [task] over [items] with at most [concurrency] in flight and flattens the
-     * per-item finding lists. One item's failure is isolated (logged, contributes no
-     * findings) so a single unreadable file can't sink the whole run — except an
-     * unavailable agent, which is fatal for every item and is rethrown.
+     * Runs every (rule × file) unit with at most [ReviewsmithConfig.maxConcurrency] in flight
+     * and, when the validator is enabled, streams each unit's findings into validator chunks
+     * as they complete — so validation of early findings overlaps the slow rule tail instead
+     * of waiting for a phase barrier. A unit's failure is isolated (logged, 0 findings,
+     * counted); an unavailable agent is fatal and rethrown. Validator chunks and rule units
+     * share one semaphore. Chunk count matches `findings.chunked(chunkSize)`: one call per
+     * full chunk plus a final flush of the remainder.
      */
-    private fun <T> runBounded(
-        concurrency: Int,
-        items: List<T>,
-        task: suspend (T) -> List<Finding>,
+    private fun runPipelined(
+        config: ReviewsmithConfig,
+        docs: List<String>,
+        repoRoot: Path,
+        units: List<Pair<Rule, String>>,
+        runUnit: suspend (Pair<Rule, String>) -> List<Finding>,
     ): BoundedRun = runBlocking(Dispatchers.IO) {
-        val semaphore = Semaphore(concurrency.coerceAtLeast(1))
+        val concurrency = config.maxConcurrency.coerceAtLeast(1)
+        val semaphore = Semaphore(concurrency)
         val abandoned = AtomicInteger(0)
-        val findings = coroutineScope {
-            items.map { item ->
-                async {
+        val validatorEnabled = config.validator.enabled
+        val chunkSize = config.validator.chunkSize.coerceAtLeast(1)
+
+        coroutineScope {
+            val channel = Channel<List<Finding>>(Channel.UNLIMITED)
+            val validatorJobs = mutableListOf<Deferred<List<Finding>>>()
+
+            val consumer = launch {
+                val buffer = mutableListOf<Finding>()
+                suspend fun flush() {
+                    if (buffer.isEmpty()) return
+                    val chunk = buffer.toList()
+                    buffer.clear()
+                    validatorJobs += async {
+                        semaphore.withPermit {
+                            validateChunk(repoRoot, chunk, docs, config.validator.timeoutSeconds)
+                        }
+                    }
+                }
+                for (produced in channel) {
+                    if (!validatorEnabled) {
+                        buffer += produced
+                        continue
+                    }
+                    buffer += produced
+                    while (buffer.size >= chunkSize) {
+                        val chunk = buffer.take(chunkSize)
+                        buffer.subList(0, chunkSize).clear()
+                        validatorJobs += async {
+                            semaphore.withPermit {
+                                validateChunk(repoRoot, chunk, docs, config.validator.timeoutSeconds)
+                            }
+                        }
+                    }
+                }
+                if (validatorEnabled) flush() else if (buffer.isNotEmpty()) {
+                    val passthrough = buffer.toList()
+                    validatorJobs += async { passthrough }
+                }
+            }
+
+            val producers = units.map { unit ->
+                launch {
                     semaphore.withPermit {
-                        try {
-                            task(item)
+                        val produced = try {
+                            runUnit(unit)
                         } catch (e: Exception) {
                             if (isAgentUnavailable(e)) throw e
                             abandoned.incrementAndGet()
                             System.err.println("Reviewsmith: skipping a unit after ${abandonKind(e)}: ${e.message}")
                             emptyList()
                         }
+                        if (produced.isNotEmpty()) channel.send(produced)
                     }
                 }
-            }.awaitAll().flatten()
+            }
+            producers.joinAll()
+            channel.close()
+            consumer.join()
+
+            BoundedRun(validatorJobs.awaitAll().flatten(), abandoned.get())
         }
-        BoundedRun(findings, abandoned.get())
     }
 
     private fun abandonKind(e: Throwable): String = when (e::class.simpleName) {
@@ -221,24 +272,6 @@ class Engine(
         if (rule.appliesTo.isEmpty()) return true
         val matchers = rule.appliesTo.map { GlobUtil.matcher(it) }
         return matchers.any { it(rel) }
-    }
-
-    private fun validate(
-        repoRoot: Path,
-        raw: List<Finding>,
-        docs: List<String>,
-        config: ValidatorConfig,
-        concurrency: Int,
-    ): List<Finding> {
-        val chunks = raw.chunked(config.chunkSize.coerceAtLeast(1))
-        return runBlocking(Dispatchers.IO) {
-            val semaphore = Semaphore(concurrency.coerceAtLeast(1))
-            chunks.map { chunk ->
-                async {
-                    semaphore.withPermit { validateChunk(repoRoot, chunk, docs, config.timeoutSeconds) }
-                }
-            }.awaitAll().flatten()
-        }
     }
 
     private fun validateChunk(

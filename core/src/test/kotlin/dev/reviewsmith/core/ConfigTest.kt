@@ -12,7 +12,7 @@ class ConfigTest {
     fun `empty config yields defaults`() {
         val c = ReviewsmithConfig.parse("{}")
         assertEquals("changed", c.scope.default)
-        assertEquals(4, c.maxConcurrency)
+        assertEquals(6, c.maxConcurrency)
         assertTrue(c.validator.enabled)
         assertTrue(c.buildUponDefault)
     }
@@ -25,8 +25,8 @@ class ConfigTest {
 
     @Test
     fun `blank or whitespace config yields defaults instead of throwing`() {
-        assertEquals(4, ReviewsmithConfig.parse("").maxConcurrency)
-        assertEquals(4, ReviewsmithConfig.parse("   \n  ").maxConcurrency)
+        assertEquals(6, ReviewsmithConfig.parse("").maxConcurrency)
+        assertEquals(6, ReviewsmithConfig.parse("   \n  ").maxConcurrency)
     }
 
     @Test
