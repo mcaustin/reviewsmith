@@ -57,6 +57,22 @@ class JsonReporterTest {
     }
 
     @Test
+    fun `suggestedFix round-trips when present and is omitted when null`() {
+        val result = RunResult(
+            findings = listOf(
+                Finding("r", "A.kt", 5, Severity.ERROR, "boom", suggestedFix = "use coerceAtMost(cap)"),
+                Finding("r", "B.kt", 6, Severity.WARNING, "meh"),
+            ),
+            filesReviewed = 2,
+            rulesRun = 1,
+        )
+        val findings = Json.parseToJsonElement(JsonReporter(ReviewsmithConfig(), clock).report(result))
+            .jsonObject["findings"]!!.jsonArray
+        assertEquals("use coerceAtMost(cap)", findings[0].jsonObject["suggestedFix"]!!.jsonPrimitive.content)
+        assertFalse(findings[1].jsonObject.containsKey("suggestedFix"), "null suggestedFix should be omitted")
+    }
+
+    @Test
     fun `config embeds defaults for transparency`() {
         val config = parse()["config"]!!.jsonObject
         assertTrue(config.containsKey("maxConcurrency"), "encodeDefaults must surface default fields")

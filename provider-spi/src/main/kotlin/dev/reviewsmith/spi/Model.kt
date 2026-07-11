@@ -17,6 +17,7 @@ data class Finding(
     val message: String,
     val rationale: String? = null,
     val confidence: Confidence? = null,
+    val suggestedFix: String? = null,
 )
 
 data class TokenUsage(

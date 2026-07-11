@@ -63,7 +63,43 @@ private class RuleIdHallucinatingProvider(
     }
 }
 
+/** Rule calls emit a finding; the validator echoes it back verbatim with CLEAR confidence. */
+private class ValidatorEchoingProvider(
+    private val perRuleFinding: Finding,
+) : AgentProvider {
+    override val id = "echoing"
+    override val effectiveModel = "fake-model"
+    override val allowedTools = "Read,Grep,Glob"
+
+    override fun analyze(request: AgentRequest): AgentResult {
+        val isValidator = request.systemPrompt.contains("skeptical", ignoreCase = true)
+        return if (isValidator) {
+            AgentResult(findings = listOf(perRuleFinding.copy(confidence = Confidence.CLEAR)))
+        } else {
+            AgentResult(findings = listOf(perRuleFinding))
+        }
+    }
+}
+
 class EngineValidatorTest {
+
+    @Test
+    fun `suggestedFix survives the validator pipeline`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("F1.kt"), "class F1")
+        val dir = repo.resolve(".claude/rules")
+        Files.createDirectories(dir)
+        Files.writeString(dir.resolve("only-kt.md"), "---\npaths:\n  - \"**/*.kt\"\n---\n# KT\nbody")
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules\n")
+
+        val finding = Finding(
+            ruleId = "only-kt", file = "F1.kt", line = 1, severity = Severity.ERROR,
+            message = "boom", suggestedFix = "use coerceAtMost(cap)",
+        )
+
+        val result = Engine(ValidatorEchoingProvider(finding)).run(repo, mode = "full")
+
+        assertEquals("use coerceAtMost(cap)", result.findings.single().suggestedFix)
+    }
 
     @Test
     fun `validator cannot rewrite a findings ruleId to an unknown value`(@TempDir repo: Path) {

@@ -34,4 +34,17 @@ class ConsoleReporterTest {
         assertFalse(reporter.report(result(emptyList(), filesReviewed = 1)).contains("abandoned"))
         assertFalse(reporter.report(result(listOf(finding), filesReviewed = 1)).contains("abandoned"))
     }
+
+    @Test
+    fun `suggested fix is rendered when present`() {
+        val withFix = finding.copy(suggestedFix = "use coerceAtMost(cap)")
+        val out = reporter.report(result(listOf(withFix), filesReviewed = 1))
+        assertTrue(out.contains("fix: use coerceAtMost(cap)"), out)
+    }
+
+    @Test
+    fun `no fix line when suggestedFix is absent`() {
+        val out = reporter.report(result(listOf(finding), filesReviewed = 1))
+        assertFalse(out.contains("fix:"), out)
+    }
 }

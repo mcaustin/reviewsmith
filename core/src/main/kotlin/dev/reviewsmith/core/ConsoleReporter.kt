@@ -47,6 +47,9 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
             f.rationale?.takeIf { it.isNotBlank() }?.let {
                 sb.appendLine("  ${c(DIM)}$it${c(RESET)}")
             }
+            f.suggestedFix?.takeIf { it.isNotBlank() }?.let {
+                sb.appendLine("  ${c(DIM)}fix: $it${c(RESET)}")
+            }
             sb.appendLine()
         }
 

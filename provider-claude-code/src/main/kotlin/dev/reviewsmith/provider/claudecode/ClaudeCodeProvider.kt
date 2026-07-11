@@ -159,6 +159,7 @@ class ClaudeCodeProvider(
         val line = obj["line"]?.jsonPrimitiveOrNull()?.intOrNull
         val severity = parseSeverity(obj["severity"]?.jsonPrimitiveOrNull()?.contentOrNull)
         val rationale = obj["rationale"]?.jsonPrimitiveOrNull()?.contentOrNull
+        val suggestedFix = obj["suggestedFix"]?.jsonPrimitiveOrNull()?.contentOrNull
         val confidence = obj["confidence"]?.jsonPrimitiveOrNull()?.contentOrNull
             ?.let { runCatching { Confidence.valueOf(it.uppercase()) }.getOrNull() }
         val ruleId = obj["ruleId"]?.jsonPrimitiveOrNull()?.contentOrNull ?: ""
@@ -170,6 +171,7 @@ class ClaudeCodeProvider(
             message = message,
             rationale = rationale,
             confidence = confidence,
+            suggestedFix = suggestedFix,
         )
     }
 

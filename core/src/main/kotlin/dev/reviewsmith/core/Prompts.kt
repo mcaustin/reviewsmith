@@ -14,7 +14,8 @@ object Prompts {
                   "line": { "type": "integer" },
                   "severity": { "type": "string", "enum": ["INFO", "WARNING", "ERROR"] },
                   "message": { "type": "string" },
-                  "rationale": { "type": "string" }
+                  "rationale": { "type": "string" },
+                  "suggestedFix": { "type": "string" }
                 },
                 "required": ["file", "severity", "message"]
               }
@@ -30,8 +31,11 @@ object Prompts {
         given rule. Read the referenced project docs and any surrounding code you need.
         Report only genuine violations caused by or related to the changed code — never
         pre-existing, unrelated issues. If you are unsure whether something is a real
-        defect, do not report it. Return your findings using the required JSON output
-        schema and nothing else.
+        defect, do not report it. When — and only when — a single concrete change fixes
+        the finding, set "suggestedFix" to a short description of that change (name the
+        replacement, e.g. "use coerceAtMost(cap)"); omit it for anything needing judgment
+        or multiple edits. Return your findings using the required JSON output schema and
+        nothing else.
     """.trimIndent()
 
     fun validatorSystemPrompt(): String = """
@@ -41,7 +45,9 @@ object Prompts {
         by the project's own docs. Keep only genuinely correct, actionable findings. For
         each kept finding, set "confidence" to "CLEAR" for a mechanical single-fix issue
         with low blast radius, or "AMBIGUOUS" for a judgment call or anything changing
-        behavior or a public API. Return the kept findings using the required JSON schema,
+        behavior or a public API. Preserve a finding's "suggestedFix" when it is present
+        and correct; drop or correct it if wrong, and add one only when a single concrete
+        change fixes the finding. Return the kept findings using the required JSON schema,
         adding a "confidence" field to each.
     """.trimIndent()
 
@@ -60,6 +66,7 @@ object Prompts {
                   "severity": { "type": "string", "enum": ["INFO", "WARNING", "ERROR"] },
                   "message": { "type": "string" },
                   "rationale": { "type": "string" },
+                  "suggestedFix": { "type": "string" },
                   "confidence": { "type": "string", "enum": ["CLEAR", "AMBIGUOUS"] }
                 },
                 "required": ["ruleId", "file", "severity", "message", "confidence"]

@@ -90,6 +90,19 @@ class ClaudeCodeProviderTest {
     }
 
     @Test
+    fun `suggestedFix is parsed when present and null when absent`() {
+        val out = envelope(
+            """[
+                {"file":"A.kt","severity":"high","message":"m","suggestedFix":"use coerceAtMost(cap)"},
+                {"file":"B.kt","severity":"low","message":"n"}
+            ]""",
+        )
+        val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ out }))).analyze(request())
+        assertEquals("use coerceAtMost(cap)", result.findings[0].suggestedFix)
+        assertNull(result.findings[1].suggestedFix)
+    }
+
+    @Test
     fun `configured timeout is passed to the runner`() {
         val runner = ScriptedRunner(listOf({ envelope("[]") }))
         ClaudeCodeProvider(runner = runner).analyze(request())
