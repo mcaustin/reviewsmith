@@ -47,4 +47,47 @@ class ConsoleReporterTest {
         val out = reporter.report(result(listOf(finding), filesReviewed = 1))
         assertFalse(out.contains("fix:"), out)
     }
+
+    @Test
+    fun `findings are grouped under a rule header with a count`() {
+        val findings = listOf(
+            Finding("correctness-safety", "A.kt", 1, Severity.ERROR, "boom"),
+            Finding("correctness-safety", "B.kt", 2, Severity.WARNING, "meh"),
+            Finding("style-convention", "C.kt", 3, Severity.INFO, "nit"),
+        )
+        val out = reporter.report(result(findings, filesReviewed = 3))
+        assertTrue(out.contains("▸ correctness-safety (2)"), out)
+        assertTrue(out.contains("▸ style-convention (1)"), out)
+    }
+
+    @Test
+    fun `groups are ordered by their most severe finding`() {
+        val findings = listOf(
+            Finding("z-style", "C.kt", 3, Severity.INFO, "nit"),
+            Finding("a-correctness", "A.kt", 1, Severity.ERROR, "boom"),
+        )
+        val out = reporter.report(result(findings, filesReviewed = 2))
+        assertTrue(
+            out.indexOf("▸ a-correctness") < out.indexOf("▸ z-style"),
+            "the ERROR group should appear before the INFO group regardless of ruleId:\n$out",
+        )
+    }
+
+    @Test
+    fun `blank ruleId is labelled unattributed`() {
+        val out = reporter.report(
+            result(listOf(finding.copy(ruleId = "")), filesReviewed = 1),
+        )
+        assertTrue(out.contains("▸ (unattributed) (1)"), out)
+    }
+
+    @Test
+    fun `summary line is preserved below the groups`() {
+        val findings = listOf(
+            Finding("r", "A.kt", 1, Severity.ERROR, "boom"),
+            Finding("r", "B.kt", 2, Severity.WARNING, "meh"),
+        )
+        val out = reporter.report(result(findings, filesReviewed = 2))
+        assertTrue(out.contains("2 finding(s): 1 error, 1 warning, 0 info"), out)
+    }
 }

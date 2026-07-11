@@ -1,5 +1,6 @@
 package dev.reviewsmith.core
 
+import dev.reviewsmith.spi.Finding
 import dev.reviewsmith.spi.Severity
 
 class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
@@ -34,23 +35,29 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
             return sb.toString()
         }
 
-        for (f in findings.sortedWith(compareBy({ severityRank(it.severity) }, { it.file }))) {
-            val color = when (f.severity) {
-                Severity.ERROR -> c(RED)
-                Severity.WARNING -> c(YELLOW)
-                Severity.INFO -> c(BLUE)
+        val groups = findings.groupBy { it.ruleId }.entries
+            .sortedWith(compareBy({ minSeverityRank(it.value) }, { it.key }))
+        for ((ruleId, groupFindings) in groups) {
+            val label = ruleId.ifBlank { "(unattributed)" }
+            sb.appendLine("${c(BOLD)}▸ $label${c(RESET)} ${c(DIM)}(${groupFindings.size})${c(RESET)}")
+            for (f in groupFindings.sortedWith(compareBy({ severityRank(it.severity) }, { it.file }))) {
+                val color = when (f.severity) {
+                    Severity.ERROR -> c(RED)
+                    Severity.WARNING -> c(YELLOW)
+                    Severity.INFO -> c(BLUE)
+                }
+                val loc = f.line?.let { ":$it" } ?: ""
+                val conf = f.confidence?.let { " ${c(DIM)}[${it.name.lowercase()}]${c(RESET)}" } ?: ""
+                sb.appendLine("  $color${f.severity}${c(RESET)} ${c(BOLD)}${f.file}$loc${c(RESET)}$conf")
+                sb.appendLine("    ${f.message}")
+                f.rationale?.takeIf { it.isNotBlank() }?.let {
+                    sb.appendLine("    ${c(DIM)}$it${c(RESET)}")
+                }
+                f.suggestedFix?.takeIf { it.isNotBlank() }?.let {
+                    sb.appendLine("    ${c(DIM)}fix: $it${c(RESET)}")
+                }
+                sb.appendLine()
             }
-            val loc = f.line?.let { ":$it" } ?: ""
-            val conf = f.confidence?.let { " ${c(DIM)}[${it.name.lowercase()}]${c(RESET)}" } ?: ""
-            sb.appendLine("$color${f.severity}${c(RESET)} ${c(BOLD)}${f.file}$loc${c(RESET)}$conf")
-            sb.appendLine("  ${f.message}  ${c(DIM)}(${f.ruleId})${c(RESET)}")
-            f.rationale?.takeIf { it.isNotBlank() }?.let {
-                sb.appendLine("  ${c(DIM)}$it${c(RESET)}")
-            }
-            f.suggestedFix?.takeIf { it.isNotBlank() }?.let {
-                sb.appendLine("  ${c(DIM)}fix: $it${c(RESET)}")
-            }
-            sb.appendLine()
         }
 
         val errors = findings.count { it.severity == Severity.ERROR }
@@ -66,4 +73,7 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
         Severity.WARNING -> 1
         Severity.INFO -> 2
     }
+
+    private fun minSeverityRank(findings: List<Finding>): Int =
+        findings.minOf { severityRank(it.severity) }
 }
