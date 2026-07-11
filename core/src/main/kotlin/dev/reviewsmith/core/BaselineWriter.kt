@@ -25,6 +25,7 @@ object BaselineWriter {
         val file = BaselineFile(version = BaselineFile.VERSION, createdAt = now, entries = entries)
         val json = reviewsmithJson.encodeToString(BaselineFile.serializer(), file)
 
+        path.toAbsolutePath().parent?.let { Files.createDirectories(it) }
         val tmp = path.resolveSibling("${path.fileName}.tmp")
         Files.writeString(tmp, json)
         try {

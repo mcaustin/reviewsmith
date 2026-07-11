@@ -67,6 +67,13 @@ class BaselineRoundTripTest {
     }
 
     @Test
+    fun `write creates missing parent directories`(@TempDir dir: Path) {
+        val path = dir.resolve("reports/nested/reviewsmith-baseline.json")
+        BaselineWriter.write(listOf(finding("r", "A.kt")), path, "T")
+        assertTrue(Files.exists(path), "baseline should be written even when parent dirs are absent")
+    }
+
+    @Test
     fun `written entries are sorted by rule then file`(@TempDir dir: Path) {
         val path = dir.resolve("sorted.json")
         BaselineWriter.write(

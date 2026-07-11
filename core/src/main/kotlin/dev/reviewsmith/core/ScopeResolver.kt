@@ -1,7 +1,10 @@
 package dev.reviewsmith.core
 
+import java.io.IOException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.io.path.isRegularFile
 
 /** Runs an external command in a working dir; injectable so tests use a fake. */
@@ -9,15 +12,40 @@ fun interface CommandRunner {
     fun run(workingDir: Path, command: List<String>): String
 }
 
+private val COMMIT_SHA = Regex("^[0-9a-f]{7,40}$")
+
 object ProcessCommandRunner : CommandRunner {
+    private const val GIT_TIMEOUT_SECONDS = 120L
+
     override fun run(workingDir: Path, command: List<String>): String {
-        val proc = ProcessBuilder(command)
-            .directory(workingDir.toFile())
-            .redirectErrorStream(false)
-            .start()
-        val out = proc.inputStream.bufferedReader().readText()
-        proc.waitFor()
-        return out
+        val proc = try {
+            ProcessBuilder(command)
+                .directory(workingDir.toFile())
+                .redirectErrorStream(true)
+                .start()
+        } catch (e: IOException) {
+            throw RuntimeException(
+                "'${command.firstOrNull() ?: "command"}' could not be launched " +
+                    "(is git installed and on PATH?): ${e.message}",
+                e,
+            )
+        }
+
+        val outHolder = AtomicReference("")
+        val outThread = Thread {
+            outHolder.set(proc.inputStream.bufferedReader().readText())
+        }.apply { isDaemon = true; start() }
+
+        val finished = proc.waitFor(GIT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+        if (!finished) {
+            proc.toHandle().descendants().forEach { it.destroyForcibly() }
+            proc.destroyForcibly()
+            throw RuntimeException(
+                "'${command.joinToString(" ")}' timed out after ${GIT_TIMEOUT_SECONDS}s",
+            )
+        }
+        outThread.join(TimeUnit.SECONDS.toMillis(5))
+        return outHolder.get()
     }
 }
 
@@ -28,7 +56,11 @@ class ScopeResolver(
     fun resolve(repoRoot: Path, config: ReviewsmithConfig, mode: String): List<String> {
         val files = when (mode) {
             "full" -> walkAll(repoRoot)
-            else -> changedFiles(repoRoot, config.scope)
+            "changed" -> changedFiles(repoRoot, config.scope)
+            else -> {
+                System.err.println("Reviewsmith: unknown scope '$mode', using 'changed'.")
+                changedFiles(repoRoot, config.scope)
+            }
         }
         val matchers = config.scope.include.map { GlobUtil.matcher(it) }
         return files
@@ -61,7 +93,7 @@ class ScopeResolver(
         for ((ref, source) in candidates) {
             if (!refExists(repoRoot, ref)) continue
             val mergeBase = runner.run(repoRoot, listOf("git", "merge-base", "HEAD", ref)).trim()
-            if (mergeBase.isNotBlank()) {
+            if (mergeBase.matches(COMMIT_SHA)) {
                 System.err.println("Reviewsmith: reviewing changes vs $ref (base from $source)")
                 return mergeBase
             }
@@ -116,7 +148,10 @@ class ScopeResolver(
         Files.walk(repoRoot).use { stream ->
             return stream
                 .filter { it.isRegularFile() }
-                .filter { !it.toString().contains("/.git/") && !it.toString().contains("/build/") }
+                .filter {
+                    val p = it.toString()
+                    !p.contains("/.git/") && !p.contains("/build/") && !p.contains("/.reviewsmith/")
+                }
                 .map { repoRoot.relativize(it).toString() }
                 .toList()
         }

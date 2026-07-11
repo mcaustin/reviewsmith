@@ -18,6 +18,22 @@ dependencies {
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
+val generateVersionProperties by tasks.registering {
+    val outputDir = layout.buildDirectory.dir("generated-resources/version")
+    val versionValue = project.version.toString()
+    inputs.property("version", versionValue)
+    outputs.dir(outputDir)
+    doLast {
+        val file = outputDir.get().file("reviewsmith-version.properties").asFile
+        file.parentFile.mkdirs()
+        file.writeText("version=$versionValue\n")
+    }
+}
+
+sourceSets.main {
+    resources.srcDir(generateVersionProperties)
+}
+
 tasks.test {
     useJUnitPlatform()
 }

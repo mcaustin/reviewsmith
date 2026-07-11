@@ -19,7 +19,7 @@ class ScopeResolverTest {
         val committed: String = "",
         val uncommitted: String = "",
         val untracked: String = "",
-        val mergeBase: String = "BASE",
+        val mergeBase: String = "abc1234",
         val ghPrBase: String = "",
     ) : CommandRunner {
         val refChecks = mutableListOf<String>()
@@ -157,5 +157,35 @@ class ScopeResolverTest {
         val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
         assertEquals(listOf("A.kt"), files)
         assertEquals("origin/main", git.refChecks.first { it in setOf("origin/main") })
+    }
+
+    @Test
+    fun `non-sha merge-base output is not treated as a base`(@TempDir repo: Path) {
+        seed(repo, "Committed.kt", "Local.kt")
+        val git = FakeGit(
+            existingRefs = setOf("origin/main"),
+            committed = "Committed.kt\n",
+            uncommitted = "Local.kt\n",
+            mergeBase = "fatal: refusing to merge unrelated histories",
+        )
+        val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
+        assertEquals(listOf("Local.kt"), files, "a git error on merge-base must not become the diff base")
+    }
+
+    @Test
+    fun `unknown scope falls back to changed`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n")
+        val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "bogus")
+        assertEquals(listOf("A.kt"), files)
+    }
+
+    @Test
+    fun `full scope excludes the reviewsmith cache directory`(@TempDir repo: Path) {
+        seed(repo, "Src.kt", ".reviewsmith/cache/x.kt")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(include = listOf("**/*.kt")))
+        val files = ScopeResolver(FakeGit(), env = { null }).resolve(repo, cfg, "full")
+        assertTrue(files.contains("Src.kt"))
+        assertFalse(files.any { it.contains(".reviewsmith") }, "cache dir must be excluded: $files")
     }
 }

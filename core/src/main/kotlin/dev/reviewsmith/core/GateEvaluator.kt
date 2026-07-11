@@ -21,7 +21,8 @@ object GateEvaluator {
                 "confidence stamp (validator may have been disabled or failed); those findings did not gate."
         }
 
-        val triggering = findings.filter { isGating(it, level, config.failOnCategory, rulesById) }
+        val gatedConfidences = config.gatedConfidences()
+        val triggering = findings.filter { isGating(it, level, config.failOnCategory, rulesById, gatedConfidences) }
         val decision = if (triggering.isEmpty()) GateDecision.Pass else GateDecision.Fail(triggering)
         return GateEvaluationResult(decision, warnings)
     }
@@ -31,8 +32,9 @@ object GateEvaluator {
         level: FailOnLevel,
         failOnCategory: List<String>,
         rulesById: Map<String, Rule>,
+        gatedConfidences: Set<Confidence>,
     ): Boolean {
-        if (f.confidence != Confidence.CLEAR) return false
+        if (f.confidence == null || f.confidence !in gatedConfidences) return false
         val thresholdTrigger = when (level) {
             FailOnLevel.NONE -> false
             FailOnLevel.WARNING -> f.severity == Severity.WARNING || f.severity == Severity.ERROR

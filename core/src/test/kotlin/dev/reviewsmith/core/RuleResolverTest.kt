@@ -124,4 +124,20 @@ class RuleResolverTest {
         assertTrue(ids.contains("correctness-safety"), "shipped rules present by default")
         assertTrue(ids.contains("custom"), "claude/rules discovered by default")
     }
+
+    @Test
+    fun `buildUponDefault false drops shipped rules`(@TempDir repo: Path) {
+        writeRule(repo.resolve(".claude/rules"), "custom.md", "---\n---\nbody")
+        val rules = RuleResolver.resolve(repo, ReviewsmithConfig(buildUponDefault = false))
+        val ids = rules.map { it.id }.toSet()
+        assertFalse(ids.contains("correctness-safety"), "shipped rules must be dropped: $ids")
+        assertTrue(ids.contains("custom"), "user rules still resolve")
+    }
+
+    @Test
+    fun `explicit ruleSources overrides buildUponDefault`(@TempDir repo: Path) {
+        val config = ReviewsmithConfig(buildUponDefault = false, ruleSources = listOf("shipped"))
+        val ids = RuleResolver.resolve(repo, config).map { it.id }.toSet()
+        assertTrue(ids.contains("correctness-safety"), "explicit ruleSources wins over buildUponDefault")
+    }
 }

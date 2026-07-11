@@ -31,7 +31,7 @@ class SarifReporterTest {
         assertTrue(root.containsKey("\$schema"))
         val driver = root["runs"]!!.jsonArray[0].jsonObject["tool"]!!.jsonObject["driver"]!!.jsonObject
         assertEquals("Reviewsmith", driver["name"]!!.jsonPrimitive.content)
-        assertEquals("0.0.1", driver["version"]!!.jsonPrimitive.content)
+        assertTrue(driver["version"]!!.jsonPrimitive.content.isNotBlank(), "driver version must be present")
     }
 
     @Test

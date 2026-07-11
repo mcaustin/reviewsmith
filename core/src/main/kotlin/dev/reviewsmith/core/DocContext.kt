@@ -23,7 +23,6 @@ object DocContextBuilder {
                 Files.walk(d).use { stream ->
                     stream.filter { it.isRegularFile() }
                         .filter { it.toString().endsWith(".md") }
-                        .limit(config.maxDocs.toLong())
                         .forEach { found += repoRoot.relativize(it).toString() }
                 }
             }

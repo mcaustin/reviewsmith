@@ -107,7 +107,7 @@ class ReviewsmithCommand : Callable<Int> {
             System.err.println("Reviewsmith: run cost \$%.4f".format(it) + hits)
         }
 
-        maybePrintBaselineTip(repoRoot, result.findings.size)
+        maybePrintBaselineTip(config, repoRoot, result.findings.size)
 
         val gateResult = GateEvaluator.evaluate(result.findings, config.gate, result.rulesById)
         gateResult.warnings.forEach { System.err.println(it) }
@@ -121,9 +121,8 @@ class ReviewsmithCommand : Callable<Int> {
         return 0
     }
 
-    private fun maybePrintBaselineTip(repoRoot: Path, findingCount: Int) {
+    private fun maybePrintBaselineTip(config: ReviewsmithConfig, repoRoot: Path, findingCount: Int) {
         if (findingCount == 0) return
-        val config = ReviewsmithConfig.load(repoRoot)
         val effectiveScope = scope ?: config.scope.default
         if (effectiveScope != "full") return
         if (Files.exists(repoRoot.resolve(config.baseline.path))) return

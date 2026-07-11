@@ -1,6 +1,7 @@
 package dev.reviewsmith.gradle
 
 import org.gradle.api.DefaultTask
+import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
@@ -27,6 +28,10 @@ abstract class ReviewsmithTask @Inject constructor(
     @get:Optional
     abstract val model: Property<String>
 
+    @get:Input
+    @get:Optional
+    abstract val failOnGate: Property<Boolean>
+
     @get:Internal
     abstract val projectRootDir: DirectoryProperty
 
@@ -42,10 +47,30 @@ abstract class ReviewsmithTask @Inject constructor(
             if (model.isPresent) { add("--model"); add(model.get()) }
         }
 
-        execOperations.exec { spec ->
+        val exitCode = execOperations.exec { spec ->
             spec.executable = javaExecutable()
             spec.args = args
             spec.isIgnoreExitValue = true
+        }.exitValue
+
+        when (gateOutcome(exitCode, failOnGate.getOrElse(true))) {
+            Outcome.OK -> Unit
+            Outcome.GATE_ADVISORY ->
+                logger.warn("Reviewsmith gate triggered (exit 3), but failOnGate=false — not failing the build.")
+            Outcome.GATE_FAIL ->
+                throw GradleException("Reviewsmith gate failed — findings exceed the configured threshold. See output above.")
+            Outcome.ERROR ->
+                throw GradleException("Reviewsmith CLI exited with code $exitCode. See output above.")
+        }
+    }
+
+    enum class Outcome { OK, GATE_FAIL, GATE_ADVISORY, ERROR }
+
+    companion object {
+        fun gateOutcome(exitCode: Int, failOnGate: Boolean): Outcome = when (exitCode) {
+            0 -> Outcome.OK
+            3 -> if (failOnGate) Outcome.GATE_FAIL else Outcome.GATE_ADVISORY
+            else -> Outcome.ERROR
         }
     }
 

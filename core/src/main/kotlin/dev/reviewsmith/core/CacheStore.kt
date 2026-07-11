@@ -60,12 +60,9 @@ class CacheStore private constructor(
     fun pruneIfNeeded() {
         val dir = cacheDir ?: return
         runCatching {
-            Files.list(dir).use { stream ->
-                stream.filter { it.name.endsWith(".tmp") }.forEach { Files.deleteIfExists(it) }
-            }
-            val entries = Files.list(dir).use { stream ->
-                stream.filter { it.name.endsWith(".json") }.toList()
-            }
+            val all = Files.list(dir).use { it.toList() }
+            all.filter { it.name.endsWith(".tmp") }.forEach { Files.deleteIfExists(it) }
+            val entries = all.filter { it.name.endsWith(".json") }
             if (entries.size <= maxEntries) return
             val byAge = entries.mapNotNull { path ->
                 val cachedAt = runCatching {

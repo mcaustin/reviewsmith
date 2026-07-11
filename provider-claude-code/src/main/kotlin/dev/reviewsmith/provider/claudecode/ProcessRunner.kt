@@ -25,6 +25,9 @@ class AgentTimeoutException(message: String) : RuntimeException(message)
 /** Thrown when the agent exits non-zero while a spend cap is in effect (cap likely reached). */
 class AgentBudgetExceededException(message: String) : RuntimeException(message)
 
+/** Thrown when the agent exits non-zero with no usable output (auth, rate-limit, crash). */
+class AgentInvocationException(val exitCode: Int, message: String) : RuntimeException(message)
+
 object DefaultProcessRunner : ProcessRunner {
     override fun run(
         workingDir: String,
@@ -66,11 +69,16 @@ object DefaultProcessRunner : ProcessRunner {
         }
         outThread.join(TimeUnit.SECONDS.toMillis(5))
         stdinThread.join(TimeUnit.SECONDS.toMillis(5))
-        if (budgetInEffect && proc.exitValue() != 0) {
+        val exit = proc.exitValue()
+        if (budgetInEffect && exit != 0) {
             throw AgentBudgetExceededException(
-                "Agent exited ${proc.exitValue()} with a spend cap in effect — budget likely reached",
+                "Agent exited $exit with a spend cap in effect — budget likely reached",
             )
         }
-        return outHolder.get()
+        val out = outHolder.get()
+        if (exit != 0 && out.isBlank()) {
+            throw AgentInvocationException(exit, "Agent exited $exit with no output")
+        }
+        return out
     }
 }

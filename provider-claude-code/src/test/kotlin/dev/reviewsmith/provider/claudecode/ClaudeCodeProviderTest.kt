@@ -121,6 +121,16 @@ class ClaudeCodeProviderTest {
     }
 
     @Test
+    fun `cost is summed across a retry`() {
+        val first = """{"total_cost_usd": 0.02, "duration_ms": 1000, "result": "not-json-so-parse-fails"}"""
+        val second = """{"total_cost_usd": 0.05, "duration_ms": 3000, "result": {"findings": []}}"""
+        val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ first }, { second }))).analyze(request())
+
+        assertEquals(0.07, result.costUsd!!, 1e-9, "both attempts' cost should be summed")
+        assertEquals(3000L, result.durationMs, "duration should be the max across attempts")
+    }
+
+    @Test
     fun `a top-level JSON array does not crash telemetry extraction`() {
         val result = ClaudeCodeProvider(runner = ScriptedRunner(listOf({ "[]" }, { envelope("[]") }))).analyze(request())
         assertNull(result.durationMs)

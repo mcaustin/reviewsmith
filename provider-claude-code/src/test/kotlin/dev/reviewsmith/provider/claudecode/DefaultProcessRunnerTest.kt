@@ -40,8 +40,16 @@ class DefaultProcessRunnerTest {
     }
 
     @Test
-    fun `non-zero exit without budget in effect does not throw`() {
-        val out = DefaultProcessRunner.run(".", listOf("sh", "-c", "exit 3"), timeoutSeconds = 10)
-        assertEquals("", out)
+    fun `non-zero exit with no output throws AgentInvocationException`() {
+        val e = assertThrows(AgentInvocationException::class.java) {
+            DefaultProcessRunner.run(".", listOf("sh", "-c", "exit 3"), timeoutSeconds = 10)
+        }
+        assertEquals(3, e.exitCode)
+    }
+
+    @Test
+    fun `non-zero exit that still produced output is returned`() {
+        val out = DefaultProcessRunner.run(".", listOf("sh", "-c", "printf partial; exit 3"), timeoutSeconds = 10)
+        assertEquals("partial", out)
     }
 }

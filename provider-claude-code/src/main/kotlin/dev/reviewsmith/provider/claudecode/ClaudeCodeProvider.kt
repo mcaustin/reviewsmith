@@ -59,9 +59,11 @@ class ClaudeCodeProvider(
             budgetInEffect = budgetInEffect,
         )
         var findings = parse(output)
+        var telemetry = extractTelemetry(output)
         // Retry once on empty/unparseable output. A timeout or budget-cap throws out of
         // runner.run instead, so those never reach this retry.
         if (findings == null) {
+            val firstTelemetry = telemetry
             output = runner.run(
                 request.projectRoot,
                 command,
@@ -70,8 +72,8 @@ class ClaudeCodeProvider(
                 budgetInEffect = budgetInEffect,
             )
             findings = parse(output)
+            telemetry = extractTelemetry(output).mergedWith(firstTelemetry)
         }
-        val telemetry = extractTelemetry(output)
         return AgentResult(
             findings = findings ?: emptyList(),
             modelId = model,
@@ -86,7 +88,14 @@ class ClaudeCodeProvider(
         val durationMs: Long? = null,
         val costUsd: Double? = null,
         val usage: TokenUsage? = null,
-    )
+    ) {
+        /** Sums cost and takes the longer duration across attempts; keeps this attempt's usage. */
+        fun mergedWith(other: Telemetry): Telemetry = Telemetry(
+            durationMs = listOfNotNull(durationMs, other.durationMs).maxOrNull(),
+            costUsd = listOfNotNull(costUsd, other.costUsd).takeIf { it.isNotEmpty() }?.sum(),
+            usage = usage ?: other.usage,
+        )
+    }
 
     /** Pulls timing/cost/usage from the top-level `--output-format json` envelope. */
     private fun extractTelemetry(output: String): Telemetry {

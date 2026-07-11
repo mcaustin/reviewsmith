@@ -1,6 +1,7 @@
 package dev.reviewsmith.core
 
 import com.charleskorn.kaml.Yaml
+import dev.reviewsmith.spi.Confidence
 import kotlinx.serialization.Serializable
 import java.nio.file.Files
 import java.nio.file.Path
@@ -66,6 +67,12 @@ data class GateConfig(
         "ERROR" -> FailOnLevel.ERROR
         else -> FailOnLevel.NONE
     }
+
+    /** Confidence levels that are allowed to gate. `clear` (default) = CLEAR only; `ambiguous`/`all` also gate AMBIGUOUS. */
+    fun gatedConfidences(): Set<Confidence> = when (onlyConfidence.lowercase()) {
+        "ambiguous", "all" -> setOf(Confidence.CLEAR, Confidence.AMBIGUOUS)
+        else -> setOf(Confidence.CLEAR)
+    }
 }
 
 @Serializable
@@ -85,7 +92,11 @@ data class ReviewsmithConfig(
 ) {
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =
-        ruleSources ?: listOf(SOURCE_SHIPPED, ".claude/rules", "reviewsmith/rules")
+        ruleSources ?: if (buildUponDefault) {
+            listOf(SOURCE_SHIPPED, ".claude/rules", "reviewsmith/rules")
+        } else {
+            listOf(".claude/rules", "reviewsmith/rules")
+        }
 
     companion object {
         const val SOURCE_SHIPPED = "shipped"

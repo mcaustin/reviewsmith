@@ -103,6 +103,26 @@ class GateEvaluatorTest {
     }
 
     @Test
+    fun `onlyConfidence ambiguous gates an ambiguous error`() {
+        val f = finding(severity = Severity.ERROR, confidence = Confidence.AMBIGUOUS)
+        val g = GateConfig(failOn = "error", onlyConfidence = "ambiguous")
+        assertTrue(decide(f, g) is GateDecision.Fail)
+    }
+
+    @Test
+    fun `onlyConfidence ambiguous still gates a clear error`() {
+        val f = finding(severity = Severity.ERROR, confidence = Confidence.CLEAR)
+        val g = GateConfig(failOn = "error", onlyConfidence = "ambiguous")
+        assertTrue(decide(f, g) is GateDecision.Fail)
+    }
+
+    @Test
+    fun `default onlyConfidence does not gate an ambiguous error`() {
+        val f = finding(severity = Severity.ERROR, confidence = Confidence.AMBIGUOUS)
+        assertTrue(decide(f, gate("error")) is GateDecision.Pass)
+    }
+
+    @Test
     fun `empty findings pass`() {
         assertTrue(GateEvaluator.evaluate(emptyList(), gate("error")).decision is GateDecision.Pass)
     }

@@ -45,6 +45,6 @@ class SarifReporter : Reporter {
     private companion object {
         const val SCHEMA =
             "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json"
-        const val TOOL_VERSION = "0.0.1"
+        val TOOL_VERSION: String = BuildInfo.version
     }
 }

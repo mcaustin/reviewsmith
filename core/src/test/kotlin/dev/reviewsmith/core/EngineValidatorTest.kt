@@ -40,7 +40,51 @@ private class ValidatorFailingProvider(
     }
 }
 
+/** Rule calls return a finding; the validator echoes it back but with a hallucinated ruleId. */
+private class RuleIdHallucinatingProvider(
+    private val perRuleFinding: Finding,
+    private val validatorRuleId: String,
+) : AgentProvider {
+    override val id = "hallucinating"
+    override val effectiveModel = "fake-model"
+    override val allowedTools = "Read,Grep,Glob"
+
+    override fun analyze(request: AgentRequest): AgentResult {
+        val isValidator = request.systemPrompt.contains("skeptical", ignoreCase = true)
+        return if (isValidator) {
+            AgentResult(
+                findings = listOf(
+                    perRuleFinding.copy(ruleId = validatorRuleId, confidence = Confidence.CLEAR),
+                ),
+            )
+        } else {
+            AgentResult(findings = listOf(perRuleFinding))
+        }
+    }
+}
+
 class EngineValidatorTest {
+
+    @Test
+    fun `validator cannot rewrite a findings ruleId to an unknown value`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("F1.kt"), "class F1")
+        val dir = repo.resolve(".claude/rules")
+        Files.createDirectories(dir)
+        Files.writeString(dir.resolve("only-kt.md"), "---\npaths:\n  - \"**/*.kt\"\n---\n# KT\nbody")
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules\n")
+
+        val ruleFinding = Finding(ruleId = "", file = "F1.kt", line = 3, severity = Severity.ERROR, message = "boom")
+        val provider = RuleIdHallucinatingProvider(ruleFinding, validatorRuleId = "totally-made-up")
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        assertTrue(result.findings.isNotEmpty())
+        assertTrue(
+            result.findings.none { it.ruleId == "totally-made-up" },
+            "hallucinated ruleId must be corrected back to the input rule: ${result.findings.map { it.ruleId }}",
+        )
+        assertEquals("only-kt", result.findings.first().ruleId)
+    }
 
     private fun seedRepo(repo: Path, files: Int, validatorYaml: String) {
         for (i in 1..files) Files.writeString(repo.resolve("F$i.kt"), "class F$i")

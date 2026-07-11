@@ -257,9 +257,19 @@ class Engine(
             outputSchema = Prompts.validatorSchema,
             callTimeoutSeconds = timeoutSeconds,
         )
+        val validIds = chunk.map { it.ruleId }.filter { it.isNotBlank() }.toSet()
+        val idByLocation = chunk
+            .groupBy { it.file to it.line }
+            .filterValues { it.map { f -> f.ruleId }.toSet().size == 1 }
+            .mapValues { it.value.first().ruleId }
         return try {
-            provider.analyze(request).findings.map {
-                if (it.ruleId.isBlank()) it.copy(ruleId = "reviewsmith") else it
+            provider.analyze(request).findings.map { f ->
+                val resolvedId = when {
+                    f.ruleId in validIds -> f.ruleId
+                    idByLocation[f.file to f.line] != null -> idByLocation.getValue(f.file to f.line)
+                    else -> "reviewsmith"
+                }
+                if (resolvedId == f.ruleId) f else f.copy(ruleId = resolvedId)
             }
         } catch (e: Exception) {
             if (isAgentUnavailable(e)) throw e
