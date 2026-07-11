@@ -41,6 +41,28 @@ class ScopeResolverTest {
         }
     }
 
+    /** A fake git that returns canned diff text keyed by the git command shape, for captureDiffs. */
+    private class DiffGit(
+        val existingRefs: Set<String> = setOf("origin/main"),
+        val committedDiff: String = "",
+        val uncommittedDiff: String = "",
+        val untrackedDiff: String = "",
+        val trackedFiles: Set<String> = emptySet(),
+    ) : CommandRunner {
+        override fun run(workingDir: Path, command: List<String>): String = when {
+            command.contains("rev-parse") -> {
+                val ref = command.last().removeSuffix("^{commit}")
+                if (ref in existingRefs) "abc123\n" else ""
+            }
+            command.contains("merge-base") -> "abc1234\n"
+            command.contains("--no-index") -> untrackedDiff
+            command.contains("ls-files") -> if (command.last() in trackedFiles) "${command.last()}\n" else ""
+            command.contains("-U5") && command.contains("HEAD") && command.contains("abc1234") -> committedDiff
+            command.contains("-U5") && command.contains("HEAD") -> uncommittedDiff
+            else -> ""
+        }
+    }
+
     private fun seed(repo: Path, vararg rels: String) {
         for (rel in rels) {
             val p = repo.resolve(rel)
@@ -178,6 +200,43 @@ class ScopeResolverTest {
         val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n")
         val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "bogus")
         assertEquals(listOf("A.kt"), files)
+    }
+
+    @Test
+    fun `captureDiffs returns the committed diff for a changed file`(@TempDir repo: Path) {
+        val diff = "diff --git a/A.kt b/A.kt\n@@ -1 +1 @@\n-old\n+new"
+        val git = DiffGit(committedDiff = diff)
+        val ctx = ScopeResolver(git, env = { null }).captureDiffs(repo, config(), listOf("A.kt"))
+        assertEquals(diff, ctx.forFile("A.kt"))
+    }
+
+    @Test
+    fun `captureDiffs falls back to no-index for a new untracked file`(@TempDir repo: Path) {
+        val diff = "diff --git a/New.kt b/New.kt\n@@ -0,0 +1 @@\n+brand new"
+        val git = DiffGit(untrackedDiff = diff)
+        val ctx = ScopeResolver(git, env = { null }).captureDiffs(repo, config(), listOf("New.kt"))
+        assertEquals(diff, ctx.forFile("New.kt"))
+    }
+
+    @Test
+    fun `captureDiffs yields no diff for a tracked file with no changes`(@TempDir repo: Path) {
+        val git = DiffGit(trackedFiles = setOf("A.kt"), untrackedDiff = "SHOULD NOT APPEAR")
+        val ctx = ScopeResolver(git, env = { null }).captureDiffs(repo, config(), listOf("A.kt"))
+        assertTrue(ctx.forFile("A.kt") == null, "an unchanged tracked file must not fall back to a whole-file diff")
+    }
+
+    @Test
+    fun `captureDiffs caps a huge diff at the max`(@TempDir repo: Path) {
+        val huge = "+x".repeat(DiffContext.MAX_DIFF_CHARS)
+        val git = DiffGit(uncommittedDiff = huge)
+        val ctx = ScopeResolver(git, env = { null }).captureDiffs(repo, config(), listOf("A.kt"))
+        assertEquals(DiffContext.MAX_DIFF_CHARS, ctx.forFile("A.kt")!!.length)
+    }
+
+    @Test
+    fun `captureDiffs empty file list is empty context`(@TempDir repo: Path) {
+        val ctx = ScopeResolver(DiffGit(), env = { null }).captureDiffs(repo, config(), emptyList())
+        assertTrue(ctx.byFile.isEmpty())
     }
 
     @Test

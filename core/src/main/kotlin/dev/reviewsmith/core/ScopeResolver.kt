@@ -70,6 +70,37 @@ class ScopeResolver(
             .sorted()
     }
 
+    /**
+     * Captures a unified diff (±5 lines of context) for each of [files] so the rule and
+     * validator prompts can show the actual changed lines. Committed changes diff against the
+     * resolved base, uncommitted changes against HEAD, and a file absent from both (a new
+     * untracked file) is diffed against `/dev/null` so its whole body shows as additions. A
+     * per-file diff is capped at [DiffContext.MAX_DIFF_CHARS] and any capture failure degrades
+     * to no diff for that file rather than failing the run.
+     */
+    fun captureDiffs(repoRoot: Path, config: ReviewsmithConfig, files: List<String>): DiffContext {
+        if (files.isEmpty()) return DiffContext.EMPTY
+        val base = resolveBase(repoRoot, config.scope)
+        val byFile = LinkedHashMap<String, String>()
+        for (file in files) {
+            val diff = runCatching { captureFileDiff(repoRoot, base, file) }.getOrNull()
+            if (!diff.isNullOrBlank()) byFile[file] = diff.take(DiffContext.MAX_DIFF_CHARS)
+        }
+        return DiffContext(byFile)
+    }
+
+    private fun captureFileDiff(repoRoot: Path, base: String?, file: String): String {
+        val committed = base?.let {
+            runner.run(repoRoot, listOf("git", "diff", "-U5", it, "HEAD", "--", file))
+        }.orEmpty()
+        val uncommitted = runner.run(repoRoot, listOf("git", "diff", "-U5", "HEAD", "--", file))
+        val tracked = (committed + "\n" + uncommitted).trim()
+        if (tracked.isNotEmpty()) return tracked
+        val isTracked = runner.run(repoRoot, listOf("git", "ls-files", "--", file)).isNotBlank()
+        if (isTracked) return ""
+        return runner.run(repoRoot, listOf("git", "diff", "-U5", "--no-index", "--", "/dev/null", file)).trim()
+    }
+
     private fun changedFiles(repoRoot: Path, scope: ScopeConfig): List<String> {
         val committed = resolveBase(repoRoot, scope)?.let { base ->
             runner.run(repoRoot, listOf("git", "diff", "--name-only", base, "HEAD"))

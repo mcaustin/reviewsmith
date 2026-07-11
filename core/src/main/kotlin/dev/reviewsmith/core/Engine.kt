@@ -63,6 +63,12 @@ class Engine(
             return RunResult(emptyList(), 0, rules.size, modelId = model, rulesById = rulesById)
         }
 
+        val diffs = if (config.scope.includeDiff) {
+            scopeResolver.captureDiffs(repoRoot, config, files)
+        } else {
+            DiffContext.EMPTY
+        }
+
         val cache = cacheStore ?: resolveCache(config.cache, repoRoot)
 
         val store = baselineStore ?: if (config.baseline.enabled) {
@@ -81,8 +87,9 @@ class Engine(
         val verbose = System.getenv("REVIEWSMITH_VERBOSE") == "1"
 
         val runUnit: suspend (Pair<Rule, String>) -> List<Finding> = { (rule, file) ->
+            val fileDiff = diffs.forFile(file).orEmpty()
             val key = if (cache != null && model != null) {
-                CacheKeyBuilder.build(rule, file, docs, repoRoot, model, provider.allowedTools)
+                CacheKeyBuilder.build(rule, file, docs, repoRoot, model, provider.allowedTools, fileDiff)
             } else {
                 null
             }
@@ -97,7 +104,7 @@ class Engine(
                 val ruleDocs = (docs + rule.docs).distinct()
                 val request = AgentRequest(
                     systemPrompt = Prompts.ruleSystemPrompt(),
-                    rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), ruleDocs),
+                    rulePrompt = Prompts.ruleUserPrompt(rule, listOf(file), ruleDocs, fileDiff),
                     targetFiles = listOf(file),
                     docRefs = ruleDocs,
                     projectRoot = repoRoot.toString(),
@@ -118,7 +125,7 @@ class Engine(
             }
         }
 
-        val pipelined = runPipelined(config, docs, repoRoot, units, verbose, runUnit)
+        val pipelined = runPipelined(config, docs, repoRoot, units, diffs, verbose, runUnit)
 
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
@@ -190,6 +197,7 @@ class Engine(
         docs: List<String>,
         repoRoot: Path,
         units: List<Pair<Rule, String>>,
+        diffs: DiffContext,
         verbose: Boolean,
         runUnit: suspend (Pair<Rule, String>) -> List<Finding>,
     ): BoundedRun = runBlocking(Dispatchers.IO) {
@@ -213,7 +221,7 @@ class Engine(
                     buffer.clear()
                     validatorJobs += async {
                         semaphore.withPermit {
-                            validateChunk(repoRoot, chunk, docs, config.validator.timeoutSeconds)
+                            validateChunk(repoRoot, chunk, docs, diffs, config.validator.timeoutSeconds)
                         }
                     }
                 }
@@ -228,7 +236,7 @@ class Engine(
                         buffer.subList(0, chunkSize).clear()
                         validatorJobs += async {
                             semaphore.withPermit {
-                                validateChunk(repoRoot, chunk, docs, config.validator.timeoutSeconds)
+                                validateChunk(repoRoot, chunk, docs, diffs, config.validator.timeoutSeconds)
                             }
                         }
                     }
@@ -289,12 +297,14 @@ class Engine(
         repoRoot: Path,
         chunk: List<Finding>,
         docs: List<String>,
+        diffs: DiffContext,
         timeoutSeconds: Long,
     ): List<Finding> {
         val rawJson = json.encodeToString(mapOf("findings" to chunk))
+        val chunkDiff = diffs.forFiles(chunk.map { it.file })
         val request = AgentRequest(
             systemPrompt = Prompts.validatorSystemPrompt(),
-            rulePrompt = Prompts.validatorUserPrompt(rawJson, docs),
+            rulePrompt = Prompts.validatorUserPrompt(rawJson, docs, chunkDiff),
             targetFiles = chunk.map { it.file }.distinct(),
             docRefs = docs,
             projectRoot = repoRoot.toString(),

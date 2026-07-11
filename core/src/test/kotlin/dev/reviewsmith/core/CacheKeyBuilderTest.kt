@@ -32,7 +32,8 @@ class CacheKeyBuilderTest {
         docPaths: List<String> = emptyList(),
         model: String = "opus",
         tools: String = "Read,Grep,Glob",
-    ) = CacheKeyBuilder.build(rule, file, docPaths, repo, model, tools)
+        diff: String = "",
+    ) = CacheKeyBuilder.build(rule, file, docPaths, repo, model, tools, diff)
 
     @Test
     fun `same inputs produce the same key`(@TempDir repo: Path) {
@@ -107,6 +108,18 @@ class CacheKeyBuilderTest {
         val rich = key(repo, rule = rule(maxBudgetUsd = 0.10))
         assertNotEquals(none, cheap)
         assertNotEquals(cheap, rich)
+    }
+
+    @Test
+    fun `different diff changes the key`(@TempDir repo: Path) {
+        seedFile(repo, "A.kt", "class A")
+        assertNotEquals(key(repo, diff = "@@ -1 +1 @@\n-a\n+b"), key(repo, diff = "@@ -1 +1 @@\n-a\n+c"))
+    }
+
+    @Test
+    fun `adding a diff changes the key`(@TempDir repo: Path) {
+        seedFile(repo, "A.kt", "class A")
+        assertNotEquals(key(repo, diff = ""), key(repo, diff = "@@ -1 +1 @@\n-a\n+b"))
     }
 
     @Test

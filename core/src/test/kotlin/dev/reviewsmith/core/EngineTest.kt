@@ -64,6 +64,15 @@ private class OverlapProbeProvider(
     }
 }
 
+/** A CommandRunner that answers captureDiffs' git queries with one canned diff for every file. */
+private class CannedDiffRunner(private val diff: String) : CommandRunner {
+    override fun run(workingDir: Path, command: List<String>): String = when {
+        command.contains("rev-parse") -> ""
+        command.contains("-U5") && command.contains("HEAD") -> diff
+        else -> ""
+    }
+}
+
 class EngineTest {
 
     private fun seedRepo(repo: Path) {
@@ -259,6 +268,60 @@ class EngineTest {
         assertTrue(
             provider.validatorStartedBeforeSlowUnitFinished.get(),
             "a validator chunk should run while the slow rule unit is still blocked",
+        )
+    }
+
+    @Test
+    fun `rule prompt carries the diff hunk by default`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false",
+        )
+        val diff = "@@ -1 +1 @@\n-old body\n+new body"
+        val provider = FakeProvider()
+
+        Engine(provider, ScopeResolver(CannedDiffRunner(diff), env = { null })).run(repo, mode = "full")
+
+        assertTrue(
+            provider.requests.all { it.rulePrompt.contains("new body") },
+            "the diff hunk should be embedded in every rule prompt",
+        )
+    }
+
+    @Test
+    fun `includeDiff false omits the diff hunk from the prompt`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\nscope:\n  includeDiff: false",
+        )
+        val diff = "@@ -1 +1 @@\n-old body\n+new body"
+        val provider = FakeProvider()
+
+        Engine(provider, ScopeResolver(CannedDiffRunner(diff), env = { null })).run(repo, mode = "full")
+
+        assertTrue(
+            provider.requests.none { it.rulePrompt.contains("new body") },
+            "no diff hunk should be embedded when scope.includeDiff is false",
+        )
+    }
+
+    @Test
+    fun `validator prompt carries the diff hunk`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules")
+        val diff = "@@ -1 +1 @@\n-old body\n+new body"
+        val canned = listOf(Finding(ruleId = "", file = "A.kt", line = 1, severity = Severity.ERROR, message = "boom"))
+        val provider = FakeProvider(findingsPerRuleCall = canned)
+
+        Engine(provider, ScopeResolver(CannedDiffRunner(diff), env = { null })).run(repo, mode = "full")
+
+        val validatorRequests = provider.requests.filter { it.systemPrompt.contains("skeptical", ignoreCase = true) }
+        assertTrue(validatorRequests.isNotEmpty(), "a validator call should have run")
+        assertTrue(
+            validatorRequests.all { it.rulePrompt.contains("new body") },
+            "the validator prompt should carry the diff for the finding's file",
         )
     }
 

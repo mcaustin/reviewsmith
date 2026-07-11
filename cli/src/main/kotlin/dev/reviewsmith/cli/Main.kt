@@ -78,6 +78,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--dry-run"], description = ["Print the scope, rule count, and cost estimate, then exit (no agent calls)"])
     var dryRun: Boolean = false
 
+    @Option(names = ["--no-diff"], description = ["Do not embed the changed-lines diff in prompts (agent reads whole files)"])
+    var noDiff: Boolean = false
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -146,8 +149,12 @@ class ReviewsmithCommand : Callable<Int> {
         return 0
     }
 
-    private fun withCliOverrides(config: ReviewsmithConfig): ReviewsmithConfig =
-        rule?.takeIf { it.isNotEmpty() }?.let { config.copy(onlyRules = it) } ?: config
+    private fun withCliOverrides(config: ReviewsmithConfig): ReviewsmithConfig {
+        var c = config
+        rule?.takeIf { it.isNotEmpty() }?.let { c = c.copy(onlyRules = it) }
+        if (noDiff) c = c.copy(scope = c.scope.copy(includeDiff = false))
+        return c
+    }
 
     private fun mergeGate(base: GateConfig): GateConfig = base.copy(
         failOn = failOn ?: base.failOn,

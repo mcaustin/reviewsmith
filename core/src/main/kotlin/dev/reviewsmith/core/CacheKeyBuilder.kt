@@ -6,9 +6,10 @@ import java.nio.file.Path
 /**
  * Derives the content-addressed cache key for one (rule × file) work unit. The key covers
  * every declared input that changes the agent's answer: rule identity + body, the target
- * file's content, the contents of every doc the agent may read, the model, the tool list,
- * the engine's prompt + output schema, and the budget cap. `callTimeoutSeconds` is excluded
- * — a timeout throws before a write, so it can never poison an entry.
+ * file's content, the diff hunk shown in the prompt, the contents of every doc the agent may
+ * read, the model, the tool list, the engine's prompt + output schema, and the budget cap.
+ * `callTimeoutSeconds` is excluded — a timeout throws before a write, so it can never poison
+ * an entry.
  */
 object CacheKeyBuilder {
     fun build(
@@ -18,6 +19,7 @@ object CacheKeyBuilder {
         repoRoot: Path,
         effectiveModel: String,
         allowedTools: String,
+        diff: String = "",
     ): String {
         val allDocPaths = (docPaths + rule.docs).distinct().sorted()
         val docHash = sha256hex(
@@ -40,6 +42,7 @@ object CacheKeyBuilder {
             effectiveModel,
             allowedTools,
             promptHash,
+            sha256hex(diff.toByteArray(Charsets.UTF_8)),
             rule.maxBudgetUsd?.toString() ?: "none",
         )
         return sha256hex(components.joinToString("|").toByteArray(Charsets.UTF_8))
