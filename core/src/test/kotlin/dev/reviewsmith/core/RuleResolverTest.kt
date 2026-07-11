@@ -143,6 +143,21 @@ class RuleResolverTest {
     }
 
     @Test
+    fun `onlyRules filters the resolved set to the named ids`(@TempDir repo: Path) {
+        val config = ReviewsmithConfig(ruleSources = listOf("shipped"), onlyRules = listOf("correctness-safety"))
+        val ids = RuleResolver.resolve(repo, config).map { it.id }
+        assertEquals(listOf("correctness-safety"), ids)
+    }
+
+    @Test
+    fun `null onlyRules is no filter and empty onlyRules is treated the same`(@TempDir repo: Path) {
+        val all = RuleResolver.resolve(repo, ReviewsmithConfig(ruleSources = listOf("shipped"))).size
+        val emptyFilter = RuleResolver.resolve(repo, ReviewsmithConfig(ruleSources = listOf("shipped"), onlyRules = emptyList())).size
+        assertEquals(all, emptyFilter, "empty onlyRules must not silently drop every rule")
+        assertTrue(all >= 8)
+    }
+
+    @Test
     fun `buildUponDefault false drops shipped rules`(@TempDir repo: Path) {
         writeRule(repo.resolve(".claude/rules"), "custom.md", "---\n---\nbody")
         val rules = RuleResolver.resolve(repo, ReviewsmithConfig(buildUponDefault = false))

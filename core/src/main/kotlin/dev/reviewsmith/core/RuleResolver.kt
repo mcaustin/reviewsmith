@@ -34,9 +34,11 @@ object RuleResolver {
                 byId[rule.id] = rule
             }
         }
-        return byId.values
+        val resolved = byId.values
             .mapNotNull { applyOverride(it, config.rules[it.id]) }
             .toList()
+        val only = config.onlyRules?.takeIf { it.isNotEmpty() } ?: return resolved
+        return resolved.filter { it.id in only }
     }
 
     private fun readSource(repoRoot: Path, source: String): List<Rule> =

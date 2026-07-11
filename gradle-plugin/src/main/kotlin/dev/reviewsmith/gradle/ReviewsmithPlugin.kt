@@ -15,6 +15,10 @@ class ReviewsmithPlugin : Plugin<Project> {
             task.scope.set(extension.scope)
             task.model.set(extension.model)
             task.failOnGate.set(extension.failOnGate)
+            task.format.set(extension.format)
+            task.outputFile.set(extension.outputFile)
+            task.isolation.set(extension.isolation)
+            task.noCache.set(extension.noCache)
             task.projectRootDir.set(project.layout.projectDirectory)
         }
 

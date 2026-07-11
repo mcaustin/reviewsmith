@@ -211,6 +211,20 @@ class EngineTest {
     }
 
     @Test
+    fun `an explicit config override is honored over the on-disk config`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("A.kt"), "class A")
+        writeRule(repo.resolve(".claude/rules"), "keep.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        writeRule(repo.resolve(".claude/rules"), "drop.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false")
+        val provider = FakeProvider()
+        val overrideConfig = ReviewsmithConfig.load(repo).copy(onlyRules = listOf("keep"))
+
+        Engine(provider).run(repo, mode = "full", config = overrideConfig)
+
+        assertEquals(1, provider.ruleCallCount(), "onlyRules from the passed config must filter the real run")
+    }
+
+    @Test
     fun `rule callTimeoutSeconds reaches the agent request`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("A.kt"), "class A")
         writeRule(

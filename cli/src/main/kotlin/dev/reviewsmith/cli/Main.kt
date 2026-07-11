@@ -3,13 +3,16 @@ package dev.reviewsmith.cli
 import dev.reviewsmith.core.CacheStore
 import dev.reviewsmith.core.ConsoleReporter
 import dev.reviewsmith.core.Engine
+import dev.reviewsmith.core.GateConfig
 import dev.reviewsmith.core.GateDecision
 import dev.reviewsmith.core.GateEvaluator
+import dev.reviewsmith.core.GlobUtil
 import dev.reviewsmith.core.JsonReporter
 import dev.reviewsmith.core.Reporter
 import dev.reviewsmith.core.ReviewsmithConfig
 import dev.reviewsmith.core.RuleResolver
 import dev.reviewsmith.core.SarifReporter
+import dev.reviewsmith.core.ScopeResolver
 import dev.reviewsmith.provider.claudecode.AgentUnavailableException
 import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
 import picocli.CommandLine
@@ -24,7 +27,7 @@ import kotlin.system.exitProcess
     name = "reviewsmith",
     mixinStandardHelpOptions = true,
     version = ["reviewsmith 0.0.1"],
-    subcommands = [BaselineCommand::class],
+    subcommands = [BaselineCommand::class, InitCommand::class],
     description = ["AI-agent code review that reasons about intent."],
 )
 class ReviewsmithCommand : Callable<Int> {
@@ -56,11 +59,30 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--isolation"], description = ["strict (default, hermetic) | local (apply your local Claude config)"])
     var isolation: String? = null
 
+    @Option(names = ["--rule"], description = ["Run only this rule id (repeatable); overrides config onlyRules"])
+    var rule: List<String>? = null
+
+    @Option(names = ["--fail-on"], description = ["Gate threshold: none | warning | error (overrides config)"])
+    var failOn: String? = null
+
+    @Option(names = ["--only-confidence"], description = ["Gate only findings at this confidence: clear | ambiguous | all"])
+    var onlyConfidence: String? = null
+
+    @Option(
+        names = ["--fail-on-category"],
+        arity = "0..*",
+        description = ["Gate findings whose rule carries any of these tags (overrides config)"],
+    )
+    var failOnCategory: List<String>? = null
+
+    @Option(names = ["--dry-run"], description = ["Print the scope, rule count, and cost estimate, then exit (no agent calls)"])
+    var dryRun: Boolean = false
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
         if (listRules) {
-            val config = ReviewsmithConfig.load(repoRoot)
+            val config = withCliOverrides(ReviewsmithConfig.load(repoRoot))
             val rules = RuleResolver.resolve(repoRoot, config)
             println("Rule sources: ${config.effectiveRuleSources().joinToString(", ")}")
             println("Resolved ${rules.size} rule(s):")
@@ -71,9 +93,12 @@ class ReviewsmithCommand : Callable<Int> {
             return 0
         }
 
+        val config = withCliOverrides(ReviewsmithConfig.load(repoRoot))
+
+        if (dryRun) return printDryRun(repoRoot, config)
+
         System.err.println("Reviewsmith: analyzing ${scope ?: "changed"} files in $repoRoot ...")
 
-        val config = ReviewsmithConfig.load(repoRoot)
         val cacheStore = when {
             noCache -> CacheStore.noOp()
             refresh -> CacheStore.refreshMode(config.cache, repoRoot)
@@ -88,7 +113,7 @@ class ReviewsmithCommand : Callable<Int> {
         val provider = ClaudeCodeProvider(model = model, hermetic = hermetic)
         val engine = Engine(provider)
         val result = try {
-            engine.run(repoRoot, scope, cacheStore = cacheStore)
+            engine.run(repoRoot, scope, cacheStore = cacheStore, config = config)
         } catch (e: AgentUnavailableException) {
             System.err.println("Reviewsmith: ${e.message}")
             System.err.println("Reviewsmith: skipping review (agent unavailable).")
@@ -109,7 +134,7 @@ class ReviewsmithCommand : Callable<Int> {
 
         maybePrintBaselineTip(config, repoRoot, result.findings.size)
 
-        val gateResult = GateEvaluator.evaluate(result.findings, config.gate, result.rulesById)
+        val gateResult = GateEvaluator.evaluate(result.findings, mergeGate(config.gate), result.rulesById)
         gateResult.warnings.forEach { System.err.println(it) }
         val decision = gateResult.decision
         if (decision is GateDecision.Fail) {
@@ -118,6 +143,37 @@ class ReviewsmithCommand : Callable<Int> {
             )
             return 3
         }
+        return 0
+    }
+
+    private fun withCliOverrides(config: ReviewsmithConfig): ReviewsmithConfig =
+        rule?.takeIf { it.isNotEmpty() }?.let { config.copy(onlyRules = it) } ?: config
+
+    private fun mergeGate(base: GateConfig): GateConfig = base.copy(
+        failOn = failOn ?: base.failOn,
+        onlyConfidence = onlyConfidence ?: base.onlyConfidence,
+        failOnCategory = failOnCategory ?: base.failOnCategory,
+    )
+
+    private fun printDryRun(repoRoot: Path, config: ReviewsmithConfig): Int {
+        val effectiveScope = scope ?: config.scope.default
+        val files = ScopeResolver().resolve(repoRoot, config, effectiveScope)
+        val rules = RuleResolver.resolve(repoRoot, config)
+        val units = rules.sumOf { r ->
+            if (r.appliesTo.isEmpty()) files.size
+            else {
+                val matchers = r.appliesTo.map { GlobUtil.matcher(it) }
+                files.count { rel -> matchers.any { it(rel) } }
+            }
+        }
+        val low = "$%.2f".format(units * 0.15)
+        val high = "$%.2f".format(units * 0.50)
+        val cacheState = if (config.cache.enabled) "enabled" else "disabled"
+        println(
+            "Would analyze ${files.size} file(s) × ${rules.size} rule(s) = $units work unit(s).",
+        )
+        println("Estimated cost: $low–$high (at ~\$0.15–0.50/unit). Cache: $cacheState.")
+        println("No agent calls made.")
         return 0
     }
 

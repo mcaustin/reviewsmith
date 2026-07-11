@@ -48,8 +48,10 @@ class Engine(
         mode: String? = null,
         baselineStore: BaselineStore? = null,
         cacheStore: CacheStore? = null,
+        config: ReviewsmithConfig? = null,
     ): RunResult {
-        val config = ReviewsmithConfig.load(repoRoot)
+        @Suppress("NAME_SHADOWING")
+        val config = config ?: ReviewsmithConfig.load(repoRoot)
         val effectiveMode = mode ?: config.scope.default
         val files = scopeResolver.resolve(repoRoot, config, effectiveMode)
         val docs = DocContextBuilder.discover(repoRoot, config.docs)
@@ -116,7 +118,7 @@ class Engine(
             }
         }
 
-        val pipelined = runPipelined(config, docs, repoRoot, units, runUnit)
+        val pipelined = runPipelined(config, docs, repoRoot, units, verbose, runUnit)
 
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
@@ -188,11 +190,14 @@ class Engine(
         docs: List<String>,
         repoRoot: Path,
         units: List<Pair<Rule, String>>,
+        verbose: Boolean,
         runUnit: suspend (Pair<Rule, String>) -> List<Finding>,
     ): BoundedRun = runBlocking(Dispatchers.IO) {
         val concurrency = config.maxConcurrency.coerceAtLeast(1)
         val semaphore = Semaphore(concurrency)
         val abandoned = AtomicInteger(0)
+        val completed = AtomicInteger(0)
+        val total = units.size
         val validatorEnabled = config.validator.enabled
         val chunkSize = config.validator.chunkSize.coerceAtLeast(1)
 
@@ -244,6 +249,12 @@ class Engine(
                             abandoned.incrementAndGet()
                             System.err.println("Reviewsmith: skipping a unit after ${abandonKind(e)}: ${e.message}")
                             emptyList()
+                        }
+                        if (!verbose) {
+                            val (rule, file) = unit
+                            System.err.println(
+                                "Reviewsmith: [${completed.incrementAndGet()}/$total] ${rule.id} @ ${file.substringAfterLast('/')}",
+                            )
                         }
                         if (produced.isNotEmpty()) channel.send(produced)
                     }

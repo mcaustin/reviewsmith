@@ -85,6 +85,7 @@ data class ReviewsmithConfig(
     val callTimeoutSeconds: Long = 300,
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,
+    val onlyRules: List<String>? = null,
     val rules: Map<String, RuleOverride> = emptyMap(),
     val baseline: BaselineConfig = BaselineConfig(),
     val cache: CacheConfig = CacheConfig(),

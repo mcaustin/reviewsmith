@@ -3,13 +3,16 @@ package dev.reviewsmith.gradle
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
 import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.Internal
 import org.gradle.api.tasks.Optional
+import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.process.ExecOperations
 import java.io.File
+import java.io.FileOutputStream
 import javax.inject.Inject
 
 /**
@@ -32,6 +35,22 @@ abstract class ReviewsmithTask @Inject constructor(
     @get:Optional
     abstract val failOnGate: Property<Boolean>
 
+    @get:Input
+    @get:Optional
+    abstract val format: Property<String>
+
+    @get:Input
+    @get:Optional
+    abstract val isolation: Property<String>
+
+    @get:Input
+    @get:Optional
+    abstract val noCache: Property<Boolean>
+
+    @get:OutputFile
+    @get:Optional
+    abstract val outputFile: RegularFileProperty
+
     @get:Internal
     abstract val projectRootDir: DirectoryProperty
 
@@ -40,18 +59,26 @@ abstract class ReviewsmithTask @Inject constructor(
         val cliJar = extractCli()
         val root = projectRootDir.get().asFile
 
-        val args = buildList {
-            add("-jar"); add(cliJar.absolutePath)
-            add("--root"); add(root.absolutePath)
-            if (scope.isPresent) { add("--scope"); add(scope.get()) }
-            if (model.isPresent) { add("--model"); add(model.get()) }
-        }
+        val args = buildCliArgs(
+            cliJarPath = cliJar.absolutePath,
+            rootPath = root.absolutePath,
+            scope = scope.orNull,
+            model = model.orNull,
+            format = format.orNull,
+            isolation = isolation.orNull,
+            noCache = noCache.getOrElse(false),
+        )
+        val reportSink = outputFile.orNull?.asFile?.takeIf { redirectsStdout(format.orNull) }
+        reportSink?.parentFile?.mkdirs()
 
-        val exitCode = execOperations.exec { spec ->
-            spec.executable = javaExecutable()
-            spec.args = args
-            spec.isIgnoreExitValue = true
-        }.exitValue
+        val exitCode = (reportSink?.let { FileOutputStream(it) }).use { sink ->
+            execOperations.exec { spec ->
+                spec.executable = javaExecutable()
+                spec.args = args
+                spec.isIgnoreExitValue = true
+                if (sink != null) spec.standardOutput = sink
+            }.exitValue
+        }
 
         when (gateOutcome(exitCode, failOnGate.getOrElse(true))) {
             Outcome.OK -> Unit
@@ -71,6 +98,28 @@ abstract class ReviewsmithTask @Inject constructor(
             0 -> Outcome.OK
             3 -> if (failOnGate) Outcome.GATE_FAIL else Outcome.GATE_ADVISORY
             else -> Outcome.ERROR
+        }
+
+        /** stdout is redirected to the output file only for machine formats (not console). */
+        fun redirectsStdout(format: String?): Boolean =
+            format?.lowercase() == "json" || format?.lowercase() == "sarif"
+
+        fun buildCliArgs(
+            cliJarPath: String,
+            rootPath: String,
+            scope: String?,
+            model: String?,
+            format: String?,
+            isolation: String?,
+            noCache: Boolean,
+        ): List<String> = buildList {
+            add("-jar"); add(cliJarPath)
+            add("--root"); add(rootPath)
+            if (scope != null) { add("--scope"); add(scope) }
+            if (model != null) { add("--model"); add(model) }
+            if (format != null) { add("--format"); add(format) }
+            if (isolation != null) { add("--isolation"); add(isolation) }
+            if (noCache) add("--no-cache")
         }
     }
 
