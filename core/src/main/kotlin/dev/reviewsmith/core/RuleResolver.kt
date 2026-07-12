@@ -25,6 +25,7 @@ object RuleResolver {
         "secrets-in-code",
         "pii-logging",
         "backward-compatible-migrations",
+        "typescript-safety",
     )
 
     fun resolve(repoRoot: Path, config: ReviewsmithConfig): List<Rule> {

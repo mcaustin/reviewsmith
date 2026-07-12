@@ -48,10 +48,14 @@ class BundledRuleFixtureTest {
             "$fixtureBase/backward-compatible-migrations/positive/migration/V1__drop_column.sql",
             "$fixtureBase/backward-compatible-migrations/negative/migration/V2__add_nullable.sql",
         ),
+        "typescript-safety" to listOf(
+            "$fixtureBase/typescript-safety/positive/sample.ts",
+            "$fixtureBase/typescript-safety/negative/sample.ts",
+        ),
     )
 
     @Test
-    fun `all eight rules are bundled and shipped`(@TempDir repo: Path) {
+    fun `all bundled rules are shipped`(@TempDir repo: Path) {
         val ids = shippedRules(repo).keys
         assertTrue(
             ids.containsAll(
@@ -59,9 +63,10 @@ class BundledRuleFixtureTest {
                     "correctness-safety", "simplification", "style-convention",
                     "design-impact", "evolution-safety",
                     "secrets-in-code", "pii-logging", "backward-compatible-migrations",
+                    "typescript-safety",
                 ),
             ),
-            "expected all 8 bundled rule ids, got $ids",
+            "expected all 9 bundled rule ids, got $ids",
         )
     }
 
