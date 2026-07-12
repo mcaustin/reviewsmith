@@ -15,6 +15,7 @@ import dev.reviewsmith.core.SarifReporter
 import dev.reviewsmith.core.ScopeResolver
 import dev.reviewsmith.provider.claudecode.AgentUnavailableException
 import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
+import dev.reviewsmith.spi.AgentProviderFactory
 import picocli.CommandLine
 import picocli.CommandLine.Command
 import picocli.CommandLine.Option
@@ -113,7 +114,8 @@ class ReviewsmithCommand : Callable<Int> {
             "strict" -> true
             else -> config.agent.hermetic()
         }
-        val provider = ClaudeCodeProvider(model = model, hermetic = hermetic)
+        val provider = AgentProviderFactory.resolve()?.create(model, hermetic)
+            ?: ClaudeCodeProvider(model = model, hermetic = hermetic)
         val engine = Engine(provider)
         val result = try {
             engine.run(repoRoot, scope, cacheStore = cacheStore, config = config)
