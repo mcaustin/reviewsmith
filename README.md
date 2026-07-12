@@ -9,7 +9,7 @@ smells a pattern matcher structurally cannot see. It's invoked like any other ve
 task (`reviewsmith`, or `./gradlew reviewsmith`), ships an opinionated default rule set, and
 is fully customizable in the detekt/Spotless tradition.
 
-> **Status: experimental (v0.0.1).** The engine is feature-complete and has been run
+> **Status: experimental (v0.1.0).** The engine is feature-complete and has been run
 > end-to-end against real repositories, but APIs, config, and distribution are still moving.
 > Reviewsmith drives the [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI
 > under the hood, so it needs that CLI installed and authenticated.
@@ -57,10 +57,10 @@ Build the self-contained CLI jar and run it against any repo:
 export JAVA_HOME=/path/to/jdk-21          # Gradle needs JDK 21
 git clone https://github.com/mcaustin/reviewsmith.git
 cd reviewsmith
-./gradlew :cli:shadowJar                  # builds cli/build/libs/cli-0.0.1-SNAPSHOT-all.jar
+./gradlew :cli:shadowJar                  # builds cli/build/libs/cli-0.1.0-all.jar
 
 # review the changed files in some repo
-java -jar cli/build/libs/cli-0.0.1-SNAPSHOT-all.jar --root /path/to/your/repo
+java -jar cli/build/libs/cli-0.1.0-all.jar --root /path/to/your/repo
 ```
 
 By default it reviews **changed files** (working tree + staged + untracked, diffed against
@@ -69,7 +69,7 @@ the detected base branch). Use `--scope full` to review the whole tree.
 ### Example run
 
 ```console
-$ java -jar cli-0.0.1-SNAPSHOT-all.jar --root ~/code/orders --model claude-opus-4-8
+$ java -jar cli-0.1.0-all.jar --root ~/code/orders --model claude-opus-4-8
 Reviewsmith: analyzing changed files in /Users/you/code/orders ...
 
 Reviewsmith — reviewed 3 file(s)
@@ -123,9 +123,10 @@ Then:
 
 ## The default rules
 
-Reviewsmith ships eight rules — the five review "lenses" plus three safety checks. Each is a
-markdown prompt with YAML frontmatter (severity + file globs). Run `reviewsmith --list-rules`
-to print the resolved set for a repo without calling the agent.
+Reviewsmith ships nine rules — the five review "lenses", three safety checks, and a
+TypeScript-specific correctness rule. Each is a markdown prompt with YAML frontmatter
+(severity + file globs). Run `reviewsmith --list-rules` to print the resolved set for a repo
+without calling the agent.
 
 | Rule | Severity | Catches |
 |---|---|---|
@@ -133,6 +134,7 @@ to print the resolved set for a repo without calling the agent.
 | `secrets-in-code` | error | Hardcoded credentials, tokens, keys committed to source. |
 | `pii-logging` | error | Personal data leaking into logs / error messages. |
 | `backward-compatible-migrations` | error | Schema/proto migrations that break rolling deploys. |
+| `typescript-safety` | error | TS-specific defects the compiler/ESLint miss: floating promises, unsound `!`/`as` casts, exhaustiveness gaps. |
 | `design-impact` | warning | Cross-cutting design smells; change ripple beyond the diff. |
 | `evolution-safety` | warning | Changes that make the code harder to evolve safely. |
 | `simplification` | warning | Over-engineering; simpler equivalents. |
