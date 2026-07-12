@@ -25,6 +25,7 @@ data class RunResult(
     val filesReviewed: Int,
     val rulesRun: Int,
     val suppressedByBaseline: Int = 0,
+    val suppressedInline: Int = 0,
     val abandonedUnits: Int = 0,
     val totalCostUsd: Double? = null,
     val cacheHits: Int = 0,
@@ -130,18 +131,39 @@ class Engine(
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
 
-        val partition = BaselineFilter.partition(pipelined.findings, store)
+        val afterInline = applyInlineSuppression(pipelined.findings, files, repoRoot, config.suppression)
+
+        val partition = BaselineFilter.partition(afterInline.surfaced, store)
         return RunResult(
             findings = partition.surfaced,
             filesReviewed = files.size,
             rulesRun = rules.size,
             suppressedByBaseline = partition.suppressed.size,
+            suppressedInline = afterInline.suppressed.size,
             abandonedUnits = pipelined.abandonedUnits,
             totalCostUsd = stats.values.sumOf { it.totalCost },
             cacheHits = stats.values.sumOf { it.hits },
             modelId = model,
             rulesById = rulesById,
         )
+    }
+
+    private fun applyInlineSuppression(
+        findings: List<Finding>,
+        files: List<String>,
+        repoRoot: Path,
+        config: SuppressionConfig,
+    ): SuppressionResult {
+        if (!config.enabled || findings.isEmpty()) {
+            return SuppressionResult(findings, emptyList(), emptyList())
+        }
+        val byFile = files.associate { rel ->
+            val text = runCatching { java.nio.file.Files.readString(repoRoot.resolve(rel)) }.getOrDefault("")
+            Fingerprint.normalizeFile(rel) to SuppressionScanner.scan(rel, text)
+        }
+        val result = SuppressionFilter.apply(findings, byFile, config.band.coerceAtLeast(0))
+        result.notices.forEach { System.err.println(it) }
+        return result
     }
 
     private fun resolveCache(config: CacheConfig, repoRoot: Path): CacheStore? {

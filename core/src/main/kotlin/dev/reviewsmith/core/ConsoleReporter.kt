@@ -15,12 +15,14 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
     override fun report(result: RunResult): String {
         val findings = result.findings
         val suppressedByBaseline = result.suppressedByBaseline
+        val suppressedInline = result.suppressedInline
         val abandonedUnits = result.abandonedUnits
         val cacheHits = result.cacheHits
         fun c(code: String) = if (useColor) code else ""
         val abandonSuffix =
             if (abandonedUnits > 0) "  |  $abandonedUnits unit(s) abandoned (timeout or error)" else ""
         val cacheSuffix = if (cacheHits > 0) "  |  $cacheHits cache hit(s)" else ""
+        val inlineSuffix = if (suppressedInline > 0) "  |  $suppressedInline suppressed inline" else ""
         val sb = StringBuilder()
         sb.appendLine()
         sb.appendLine("${c(BOLD)}Reviewsmith${c(RESET)} — reviewed ${result.filesReviewed} file(s)")
@@ -28,9 +30,9 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
 
         if (findings.isEmpty()) {
             if (suppressedByBaseline > 0) {
-                sb.appendLine("${c(BLUE)}No new findings.${c(RESET)} ($suppressedByBaseline suppressed by baseline)$abandonSuffix$cacheSuffix")
+                sb.appendLine("${c(BLUE)}No new findings.${c(RESET)} ($suppressedByBaseline suppressed by baseline)$inlineSuffix$abandonSuffix$cacheSuffix")
             } else {
-                sb.appendLine("${c(BLUE)}No findings.${c(RESET)}$abandonSuffix$cacheSuffix")
+                sb.appendLine("${c(BLUE)}No findings.${c(RESET)}$inlineSuffix$abandonSuffix$cacheSuffix")
             }
             return sb.toString()
         }
@@ -64,7 +66,7 @@ class ConsoleReporter(private val useColor: Boolean = true) : Reporter {
         val warnings = findings.count { it.severity == Severity.WARNING }
         val infos = findings.count { it.severity == Severity.INFO }
         val baselineSuffix = if (suppressedByBaseline > 0) "  |  $suppressedByBaseline suppressed by baseline" else ""
-        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info$baselineSuffix$abandonSuffix$cacheSuffix")
+        sb.appendLine("${c(BOLD)}${findings.size} finding(s):${c(RESET)} $errors error, $warnings warning, $infos info$baselineSuffix$inlineSuffix$abandonSuffix$cacheSuffix")
         return sb.toString()
     }
 

@@ -326,6 +326,45 @@ class EngineTest {
     }
 
     @Test
+    fun `inline disable directive suppresses a matching finding`(@TempDir repo: Path) {
+        Files.writeString(
+            repo.resolve("A.kt"),
+            "// reviewsmith-disable-next-line only-kt -- verified safe\nval x = risky()",
+        )
+        writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false",
+        )
+        val canned = listOf(Finding(ruleId = "", file = "A.kt", line = 2, severity = Severity.ERROR, message = "boom"))
+        val provider = FakeProvider(findingsPerRuleCall = canned)
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        assertTrue(result.findings.isEmpty(), "the finding at the disabled line is suppressed")
+        assertEquals(1, result.suppressedInline)
+    }
+
+    @Test
+    fun `no-inline-suppression config keeps the finding`(@TempDir repo: Path) {
+        Files.writeString(
+            repo.resolve("A.kt"),
+            "// reviewsmith-disable-next-line only-kt -- verified safe\nval x = risky()",
+        )
+        writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\nsuppression:\n  enabled: false",
+        )
+        val canned = listOf(Finding(ruleId = "", file = "A.kt", line = 2, severity = Severity.ERROR, message = "boom"))
+
+        val result = Engine(FakeProvider(findingsPerRuleCall = canned)).run(repo, mode = "full")
+
+        assertTrue(result.findings.isNotEmpty(), "suppression disabled keeps the finding")
+        assertEquals(0, result.suppressedInline)
+    }
+
+    @Test
     fun `no matching files yields no findings and no calls`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("notes.txt"), "no source here")
         writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")

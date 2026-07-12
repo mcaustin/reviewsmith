@@ -43,6 +43,12 @@ data class BaselineConfig(
 )
 
 @Serializable
+data class SuppressionConfig(
+    val enabled: Boolean = true,
+    val band: Int = 2,
+)
+
+@Serializable
 data class CacheConfig(
     val enabled: Boolean = false,
     val dir: String = ".reviewsmith/cache",
@@ -89,6 +95,7 @@ data class ReviewsmithConfig(
     val onlyRules: List<String>? = null,
     val rules: Map<String, RuleOverride> = emptyMap(),
     val baseline: BaselineConfig = BaselineConfig(),
+    val suppression: SuppressionConfig = SuppressionConfig(),
     val cache: CacheConfig = CacheConfig(),
     val gate: GateConfig = GateConfig(),
     val agent: AgentConfig = AgentConfig(),

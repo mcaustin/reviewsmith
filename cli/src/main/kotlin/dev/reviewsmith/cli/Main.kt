@@ -82,6 +82,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--no-diff"], description = ["Do not embed the changed-lines diff in prompts (agent reads whole files)"])
     var noDiff: Boolean = false
 
+    @Option(names = ["--no-inline-suppression"], description = ["Ignore // reviewsmith-disable directives in source"])
+    var noInlineSuppression: Boolean = false
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -155,6 +158,7 @@ class ReviewsmithCommand : Callable<Int> {
         var c = config
         rule?.takeIf { it.isNotEmpty() }?.let { c = c.copy(onlyRules = it) }
         if (noDiff) c = c.copy(scope = c.scope.copy(includeDiff = false))
+        if (noInlineSuppression) c = c.copy(suppression = c.suppression.copy(enabled = false))
         return c
     }
 
