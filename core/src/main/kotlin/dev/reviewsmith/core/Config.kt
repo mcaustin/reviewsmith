@@ -13,6 +13,7 @@ data class ScopeConfig(
     val detectBase: Boolean = true,
     val include: List<String> = listOf("**/*.kt", "**/*.java", "**/*.ts", "**/*.tsx"),
     val includeDiff: Boolean = true,
+    val maxUnits: Int = 0,
 )
 
 @Serializable

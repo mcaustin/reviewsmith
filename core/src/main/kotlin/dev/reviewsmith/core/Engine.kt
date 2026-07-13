@@ -20,6 +20,17 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
 
+/**
+ * Thrown before any agent call when the resolved scope exceeds [ScopeConfig.maxUnits]. A
+ * safety backstop against a mis-resolved base (e.g. a stale local branch) fanning out into a
+ * whole-codebase review. The CLI maps this to a non-zero exit; `--force` bypasses the check.
+ */
+class ScopeExceededException(val units: Int, val maxUnits: Int) : RuntimeException(
+    "Scope of $units work unit(s) exceeds maxUnits=$maxUnits. This usually means the diff base " +
+        "resolved wrong (e.g. a stale local branch). Run with --dry-run to inspect the scope, narrow " +
+        "scope.baseRef, or pass --force / raise scope.maxUnits to proceed.",
+)
+
 data class RunResult(
     val findings: List<Finding>,
     val filesReviewed: Int,
@@ -82,6 +93,15 @@ class Engine(
         val units = rules.flatMap { rule ->
             files.filter { rel -> matchesRule(rule, rel, config) }
                 .map { file -> rule to file }
+        }
+
+        System.err.println(
+            "Reviewsmith: ${files.size} file(s) × ${rules.size} rule(s) = ${units.size} unit(s). " +
+                "Estimated cost $%.2f–$%.2f.".format(units.size * 0.15, units.size * 0.50),
+        )
+        val maxUnits = config.scope.maxUnits
+        if (maxUnits > 0 && units.size > maxUnits) {
+            throw ScopeExceededException(units.size, maxUnits)
         }
 
         val stats = ConcurrentHashMap<String, RuleStat>()

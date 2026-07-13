@@ -12,6 +12,7 @@ import dev.reviewsmith.core.Reporter
 import dev.reviewsmith.core.ReviewsmithConfig
 import dev.reviewsmith.core.RuleResolver
 import dev.reviewsmith.core.SarifReporter
+import dev.reviewsmith.core.ScopeExceededException
 import dev.reviewsmith.core.ScopeResolver
 import dev.reviewsmith.provider.claudecode.AgentUnavailableException
 import dev.reviewsmith.provider.claudecode.ClaudeCodeProvider
@@ -85,6 +86,12 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--no-inline-suppression"], description = ["Ignore // reviewsmith-disable directives in source"])
     var noInlineSuppression: Boolean = false
 
+    @Option(names = ["--force"], description = ["Bypass the scope.maxUnits guardrail for this run"])
+    var force: Boolean = false
+
+    @Option(names = ["--max-units"], description = ["Abort before any agent call if scope exceeds this many (rule × file) units (0 = unlimited)"])
+    var maxUnits: Int? = null
+
     override fun call(): Int {
         val repoRoot = Path.of(root).toAbsolutePath().normalize()
 
@@ -126,6 +133,9 @@ class ReviewsmithCommand : Callable<Int> {
             System.err.println("Reviewsmith: ${e.message}")
             System.err.println("Reviewsmith: skipping review (agent unavailable).")
             return 0
+        } catch (e: ScopeExceededException) {
+            System.err.println("Reviewsmith: ${e.message}")
+            return 2
         }
 
         val reporter: Reporter = when (format.lowercase()) {
@@ -159,6 +169,8 @@ class ReviewsmithCommand : Callable<Int> {
         rule?.takeIf { it.isNotEmpty() }?.let { c = c.copy(onlyRules = it) }
         if (noDiff) c = c.copy(scope = c.scope.copy(includeDiff = false))
         if (noInlineSuppression) c = c.copy(suppression = c.suppression.copy(enabled = false))
+        maxUnits?.let { c = c.copy(scope = c.scope.copy(maxUnits = it)) }
+        if (force) c = c.copy(scope = c.scope.copy(maxUnits = 0))
         return c
     }
 

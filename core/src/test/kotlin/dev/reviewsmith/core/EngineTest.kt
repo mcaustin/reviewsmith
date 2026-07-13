@@ -365,6 +365,35 @@ class EngineTest {
     }
 
     @Test
+    fun `scope exceeding maxUnits aborts before any agent call`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\nscope:\n  maxUnits: 1",
+        )
+        val provider = FakeProvider()
+        // 1 rule × 2 .kt files = 2 units > maxUnits 1.
+        val ex = org.junit.jupiter.api.Assertions.assertThrows(ScopeExceededException::class.java) {
+            Engine(provider).run(repo, mode = "full")
+        }
+        assertEquals(2, ex.units)
+        assertEquals(1, ex.maxUnits)
+        assertEquals(0, provider.ruleCallCount(), "no agent calls when scope is over the limit")
+    }
+
+    @Test
+    fun `maxUnits zero means unlimited`(@TempDir repo: Path) {
+        seedRepo(repo)
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\nscope:\n  maxUnits: 0",
+        )
+        val provider = FakeProvider()
+        Engine(provider).run(repo, mode = "full")
+        assertEquals(2, provider.ruleCallCount(), "maxUnits 0 does not gate")
+    }
+
+    @Test
     fun `no matching files yields no findings and no calls`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("notes.txt"), "no source here")
         writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")

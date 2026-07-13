@@ -8,6 +8,9 @@ abstract class ReviewsmithExtension {
     abstract val model: Property<String>
     abstract val attachToCheck: Property<Boolean>
 
+    /** Abort before any agent call if scope exceeds this many (rule × file) units (0 = unlimited). */
+    abstract val maxUnits: Property<Int>
+
     /** When true (default), a triggered review gate (CLI exit 3) fails the Gradle build. */
     abstract val failOnGate: Property<Boolean>
 

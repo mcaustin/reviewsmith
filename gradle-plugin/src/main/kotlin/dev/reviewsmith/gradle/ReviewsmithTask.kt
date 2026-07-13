@@ -47,6 +47,10 @@ abstract class ReviewsmithTask @Inject constructor(
     @get:Optional
     abstract val noCache: Property<Boolean>
 
+    @get:Input
+    @get:Optional
+    abstract val maxUnits: Property<Int>
+
     @get:OutputFile
     @get:Optional
     abstract val outputFile: RegularFileProperty
@@ -67,6 +71,7 @@ abstract class ReviewsmithTask @Inject constructor(
             format = format.orNull,
             isolation = isolation.orNull,
             noCache = noCache.getOrElse(false),
+            maxUnits = maxUnits.orNull,
         )
         val reportSink = outputFile.orNull?.asFile?.takeIf { redirectsStdout(format.orNull) }
         reportSink?.parentFile?.mkdirs()
@@ -112,6 +117,7 @@ abstract class ReviewsmithTask @Inject constructor(
             format: String?,
             isolation: String?,
             noCache: Boolean,
+            maxUnits: Int? = null,
         ): List<String> = buildList {
             add("-jar"); add(cliJarPath)
             add("--root"); add(rootPath)
@@ -120,6 +126,7 @@ abstract class ReviewsmithTask @Inject constructor(
             if (format != null) { add("--format"); add(format) }
             if (isolation != null) { add("--isolation"); add(isolation) }
             if (noCache) add("--no-cache")
+            if (maxUnits != null) { add("--max-units"); add(maxUnits.toString()) }
         }
     }
 

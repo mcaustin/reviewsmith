@@ -35,6 +35,20 @@ class BuildCliArgsTest {
     }
 
     @Test
+    fun `maxUnits is appended when set and omitted when null`() {
+        val withMax = ReviewsmithTask.buildCliArgs(
+            cliJarPath = "j", rootPath = "r",
+            scope = null, model = null, format = null, isolation = null, noCache = false, maxUnits = 200,
+        )
+        assertTrue(withMax.containsAll(listOf("--max-units", "200")))
+        val without = ReviewsmithTask.buildCliArgs(
+            cliJarPath = "j", rootPath = "r",
+            scope = null, model = null, format = null, isolation = null, noCache = false,
+        )
+        assertFalse(without.contains("--max-units"))
+    }
+
+    @Test
     fun `stdout is redirected only for machine formats`() {
         assertTrue(ReviewsmithTask.redirectsStdout("json"))
         assertTrue(ReviewsmithTask.redirectsStdout("sarif"))
