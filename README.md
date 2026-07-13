@@ -9,7 +9,7 @@ smells a pattern matcher structurally cannot see. It's invoked like any other ve
 task (`reviewsmith`, or `./gradlew reviewsmith`), ships an opinionated default rule set, and
 is fully customizable in the detekt/Spotless tradition.
 
-> **Status: experimental (v0.2.0).** The engine is feature-complete and has been run
+> **Status: experimental (v0.3.0).** The engine is feature-complete and has been run
 > end-to-end against real repositories, but APIs, config, and distribution are still moving.
 > Reviewsmith drives the [`claude`](https://docs.anthropic.com/en/docs/claude-code) CLI
 > under the hood, so it needs that CLI installed and authenticated.
@@ -57,10 +57,10 @@ Build the self-contained CLI jar and run it against any repo:
 export JAVA_HOME=/path/to/jdk-21          # Gradle needs JDK 21
 git clone https://github.com/mcaustin/reviewsmith.git
 cd reviewsmith
-./gradlew :cli:shadowJar                  # builds cli/build/libs/cli-0.2.0-all.jar
+./gradlew :cli:shadowJar                  # builds cli/build/libs/cli-0.3.0-all.jar
 
 # review the changed files in some repo
-java -jar cli/build/libs/cli-0.2.0-all.jar --root /path/to/your/repo
+java -jar cli/build/libs/cli-0.3.0-all.jar --root /path/to/your/repo
 ```
 
 By default it reviews **changed files** (working tree + staged + untracked, diffed against
@@ -69,7 +69,7 @@ the detected base branch). Use `--scope full` to review the whole tree.
 ### Example run
 
 ```console
-$ java -jar cli-0.2.0-all.jar --root ~/code/orders --model claude-opus-4-8
+$ java -jar cli-0.3.0-all.jar --root ~/code/orders --model claude-opus-4-8
 Reviewsmith: analyzing changed files in /Users/you/code/orders ...
 
 Reviewsmith — reviewed 3 file(s)
@@ -104,7 +104,7 @@ can apply it with the standard `plugins { }` DSL — no `settings.gradle.kts` ch
 ```kotlin
 // build.gradle.kts
 plugins {
-    id("io.github.mcaustin.reviewsmith") version "0.2.0"
+    id("io.github.mcaustin.reviewsmith") version "0.3.0"
 }
 
 reviewsmith {
@@ -158,6 +158,7 @@ validator: { enabled: true, timeoutSeconds: 600, chunkSize: 20 }
 agent:     { isolation: strict }  # strict = hermetic (default) | local = apply your ~/.claude config
 maxConcurrency: 6                 # tunes wall-clock (rate-limit risk), not cost/quality
 callTimeoutSeconds: 300           # per-agent-call timeout; a slow call is abandoned, not hung
+reportLevel: info                 # info (default) | warning | error — hide findings below this severity
 
 cache: { enabled: false, dir: .reviewsmith/cache, maxEntries: 500 }  # opt-in; requires --model
 

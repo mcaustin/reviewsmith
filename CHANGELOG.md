@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-13
+
+### Added
+
+- **Report-level filter** — `reportLevel` (`info` | `warning` | `error`, default `info`) hides findings below the given severity from the report *and* from gating, like a log level. Run at `warning` to cut `INFO` noise or `error` to see only the most serious. Configurable via `reviewsmith.yml`, the `--report-level` CLI flag, or the Gradle `reviewsmith { reportLevel }` extension; the console summary shows how many were hidden. Distinct from the gate, which controls exit code rather than visibility. The live `[preview]` stream still shows everything (raw progress feed); only the final report is filtered.
+
+### Changed
+
+- `reviewsmith init` now surfaces the `maxConcurrency` knob as a commented line in the generated `reviewsmith.yml`, so adopters discover they can tune run parallelism.
+
 ## [0.2.0] - 2026-07-13
 
 Second Gradle Plugin Portal release. Focus: operational safety (no more runaway-cost review), plus a TypeScript rule, inline suppression, and provider extensibility.
@@ -70,6 +80,7 @@ First release published to the [Gradle Plugin Portal](https://plugins.gradle.org
 - Git-runner hang under high concurrency; gate wiring for non-`none` `failOn` values; dead config keys stripped; +26 test additions covering the fixed paths.
 - Isolation enforcement, stacked-PR scope edge cases, and validator scaling under large finding sets (from live PR test feedback).
 
-[Unreleased]: https://github.com/mcaustin/reviewsmith/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/mcaustin/reviewsmith/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/mcaustin/reviewsmith/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/mcaustin/reviewsmith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mcaustin/reviewsmith/releases/tag/v0.1.0
