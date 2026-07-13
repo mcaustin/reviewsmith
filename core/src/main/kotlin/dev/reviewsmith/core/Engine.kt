@@ -147,7 +147,29 @@ class Engine(
         }
 
         val spentUsd = { stats.values.sumOf { it.totalCost } }
-        val pipelined = runPipelined(config, docs, repoRoot, units, diffs, verbose, spentUsd, runUnit)
+        val streamed = java.util.concurrent.ConcurrentLinkedQueue<Finding>()
+        val emit: (List<Finding>) -> Unit = { validated ->
+            validated.forEach { f ->
+                streamed.add(f)
+                val loc = f.line?.let { ":$it" } ?: ""
+                System.err.println("Reviewsmith: [preview] ${f.severity} ${f.ruleId} ${f.file}$loc — ${f.message}")
+            }
+        }
+        val flushHook = Thread {
+            if (streamed.isNotEmpty()) {
+                System.err.println("Reviewsmith: interrupted — ${streamed.size} finding(s) collected before exit:")
+                streamed.forEach { f ->
+                    val loc = f.line?.let { ":$it" } ?: ""
+                    System.err.println("  ${f.severity} ${f.ruleId} ${f.file}$loc — ${f.message}")
+                }
+            }
+        }
+        Runtime.getRuntime().addShutdownHook(flushHook)
+        val pipelined = try {
+            runPipelined(config, docs, repoRoot, units, diffs, verbose, spentUsd, emit, runUnit)
+        } finally {
+            runCatching { Runtime.getRuntime().removeShutdownHook(flushHook) }
+        }
 
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
@@ -243,6 +265,7 @@ class Engine(
         diffs: DiffContext,
         verbose: Boolean,
         spentUsd: () -> Double,
+        emit: (List<Finding>) -> Unit,
         runUnit: suspend (Pair<Rule, String>) -> List<Finding>,
     ): BoundedRun = runBlocking(Dispatchers.IO) {
         val concurrency = config.maxConcurrency.coerceAtLeast(1)
@@ -268,7 +291,7 @@ class Engine(
                     validatorJobs += async {
                         semaphore.withPermit {
                             validateChunk(repoRoot, chunk, docs, diffs, config.validator.timeoutSeconds)
-                        }
+                        }.also(emit)
                     }
                 }
                 for (produced in channel) {
@@ -283,13 +306,13 @@ class Engine(
                         validatorJobs += async {
                             semaphore.withPermit {
                                 validateChunk(repoRoot, chunk, docs, diffs, config.validator.timeoutSeconds)
-                            }
+                            }.also(emit)
                         }
                     }
                 }
                 if (validatorEnabled) flush() else if (buffer.isNotEmpty()) {
                     val passthrough = buffer.toList()
-                    validatorJobs += async { passthrough }
+                    validatorJobs += async { passthrough.also(emit) }
                 }
             }
 

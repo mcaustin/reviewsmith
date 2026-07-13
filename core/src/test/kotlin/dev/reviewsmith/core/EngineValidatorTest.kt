@@ -84,6 +84,32 @@ private class ValidatorEchoingProvider(
 class EngineValidatorTest {
 
     @Test
+    fun `validated findings are streamed to stderr as a preview`(@TempDir repo: Path) {
+        Files.writeString(repo.resolve("F1.kt"), "class F1")
+        val dir = repo.resolve(".claude/rules")
+        Files.createDirectories(dir)
+        Files.writeString(dir.resolve("only-kt.md"), "---\npaths:\n  - \"**/*.kt\"\n---\n# KT\nbody")
+        Files.writeString(repo.resolve("reviewsmith.yml"), "ruleSources:\n  - .claude/rules\n")
+        val finding = Finding(
+            ruleId = "only-kt", file = "F1.kt", line = 7, severity = Severity.ERROR, message = "streamed boom",
+        )
+
+        val originalErr = System.err
+        val captured = java.io.ByteArrayOutputStream()
+        System.setErr(java.io.PrintStream(captured))
+        try {
+            Engine(ValidatorEchoingProvider(finding)).run(repo, mode = "full")
+        } finally {
+            System.setErr(originalErr)
+        }
+
+        assertTrue(
+            captured.toString().contains("[preview]") && captured.toString().contains("streamed boom"),
+            "each validated finding should stream to stderr as a preview line",
+        )
+    }
+
+    @Test
     fun `suggestedFix survives the validator pipeline`(@TempDir repo: Path) {
         Files.writeString(repo.resolve("F1.kt"), "class F1")
         val dir = repo.resolve(".claude/rules")
