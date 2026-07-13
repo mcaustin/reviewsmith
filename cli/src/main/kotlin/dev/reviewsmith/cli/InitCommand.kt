@@ -60,6 +60,8 @@ class InitCommand : Callable<Int> {
             scope:
               default: changed          # changed (diff vs base) | full
               # baseRef: origin/main    # force a base; auto-detected when unset
+            # maxConcurrency: 6         # units run in parallel (default 6); raise for a faster run,
+            #                           # lower if you hit Claude API rate limits. No cost/quality impact.
             # gate stays advisory (exit 0) until you opt in:
             gate:
               failOn: none              # none | warning | error
