@@ -80,6 +80,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--dry-run"], description = ["Print the scope, rule count, and cost estimate, then exit (no agent calls)"])
     var dryRun: Boolean = false
 
+    @Option(names = ["--fail-on-abandoned"], description = ["Fail (exit 3) if any unit was abandoned (timeout/budget)"])
+    var failOnAbandoned: Boolean = false
+
     @Option(names = ["--no-diff"], description = ["Do not embed the changed-lines diff in prompts (agent reads whole files)"])
     var noDiff: Boolean = false
 
@@ -152,12 +155,20 @@ class ReviewsmithCommand : Callable<Int> {
 
         maybePrintBaselineTip(config, repoRoot, result.findings.size)
 
-        val gateResult = GateEvaluator.evaluate(result.findings, mergeGate(config.gate), result.rulesById)
+        val effectiveGate = mergeGate(config.gate)
+        val gateResult = GateEvaluator.evaluate(result.findings, effectiveGate, result.rulesById)
         gateResult.warnings.forEach { System.err.println(it) }
         val decision = gateResult.decision
         if (decision is GateDecision.Fail) {
             System.err.println(
                 "Reviewsmith: gate triggered — ${decision.triggeringFindings.size} finding(s) exceed the configured threshold.",
+            )
+            return 3
+        }
+        if (effectiveGate.failOnAbandoned && result.abandonedUnits > 0) {
+            System.err.println(
+                "Reviewsmith: gate triggered — ${result.abandonedUnits} unit(s) were abandoned " +
+                    "(timeout/budget) and failOnAbandoned is set; the review is incomplete.",
             )
             return 3
         }
@@ -178,6 +189,7 @@ class ReviewsmithCommand : Callable<Int> {
         failOn = failOn ?: base.failOn,
         onlyConfidence = onlyConfidence ?: base.onlyConfidence,
         failOnCategory = failOnCategory ?: base.failOnCategory,
+        failOnAbandoned = failOnAbandoned || base.failOnAbandoned,
     )
 
     private fun printDryRun(repoRoot: Path, config: ReviewsmithConfig): Int {

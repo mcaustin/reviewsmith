@@ -118,7 +118,7 @@ class Engine(
             if (cached != null) {
                 recordStat(stats, rule.id, durationMs = 0, costUsd = 0.0, isHit = true)
                 if (verbose) {
-                    System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] cache hit")
+                    System.err.println("Reviewsmith: [${rule.id} @ ${file}] cache hit")
                 }
                 cached
             } else {
@@ -138,7 +138,7 @@ class Engine(
                 if (verbose) {
                     val ms = result.durationMs?.let { "${it}ms" } ?: "?ms"
                     val cost = result.costUsd?.let { "$%.4f".format(it) } ?: "?"
-                    System.err.println("Reviewsmith: [${rule.id} @ ${file.substringAfterLast('/')}] $ms $cost")
+                    System.err.println("Reviewsmith: [${rule.id} @ ${file}] $ms $cost")
                 }
                 val stamped = result.findings.map { it.copy(ruleId = rule.id) }
                 if (key != null) cache!!.put(key, rule.id, file, stamped)
@@ -340,7 +340,7 @@ class Engine(
                         if (!verbose) {
                             val (rule, file) = unit
                             System.err.println(
-                                "Reviewsmith: [${completed.incrementAndGet()}/$total] ${rule.id} @ ${file.substringAfterLast('/')}",
+                                "Reviewsmith: [${completed.incrementAndGet()}/$total] ${rule.id} @ ${file}",
                             )
                         }
                         if (produced.isNotEmpty()) channel.send(produced)

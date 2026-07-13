@@ -108,6 +108,19 @@ class ConfigTest {
     }
 
     @Test
+    fun `gate failOnAbandoned defaults false and parses true`() {
+        assertEquals(false, ReviewsmithConfig().gate.failOnAbandoned)
+        assertEquals(true, ReviewsmithConfig.parse("gate:\n  failOnAbandoned: true").gate.failOnAbandoned)
+    }
+
+    @Test
+    fun `scope maxUnits and top-level maxTotalBudgetUsd parse`() {
+        val cfg = ReviewsmithConfig.parse("scope:\n  maxUnits: 200\nmaxTotalBudgetUsd: 25.0")
+        assertEquals(200, cfg.scope.maxUnits)
+        assertEquals(25.0, cfg.maxTotalBudgetUsd!!, 1e-9)
+    }
+
+    @Test
     fun `design-doc gate example parses without throwing`() {
         val gate = ReviewsmithConfig.parse("gate:\n  failOn: warning\n  onlyConfidence: clear").gate
         assertEquals(FailOnLevel.WARNING, gate.failOnLevel())

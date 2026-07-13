@@ -70,6 +70,7 @@ data class GateConfig(
     val failOn: String = "none",
     val failOnCategory: List<String> = emptyList(),
     val onlyConfidence: String = "clear",
+    val failOnAbandoned: Boolean = false,
 ) {
     fun failOnLevel(): FailOnLevel = when (failOn.uppercase()) {
         "WARNING" -> FailOnLevel.WARNING
