@@ -96,7 +96,7 @@ class Engine(
         }
 
         System.err.println(
-            "Reviewsmith: ${files.size} file(s) × ${rules.size} rule(s) = ${units.size} unit(s). " +
+            "Reviewsmith: ${files.size} file(s), ${rules.size} rule(s) → ${units.size} work unit(s). " +
                 "Estimated cost $%.2f–$%.2f.".format(units.size * 0.15, units.size * 0.50),
         )
         val maxUnits = config.scope.maxUnits

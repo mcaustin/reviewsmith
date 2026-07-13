@@ -71,14 +71,14 @@ class BundledRuleFixtureTest {
     }
 
     @Test
-    fun `heavy rules ship with cost and time guardrails`(@TempDir repo: Path) {
+    fun `heavy rules ship with a budget cap and inherit the global timeout`(@TempDir repo: Path) {
         val rules = shippedRules(repo)
         val correctness = rules.getValue("correctness-safety")
         val design = rules.getValue("design-impact")
-        assertEquals(180L, correctness.callTimeoutSeconds)
         assertEquals(1.25, correctness.maxBudgetUsd!!, 1e-9)
-        assertEquals(180L, design.callTimeoutSeconds)
         assertEquals(1.00, design.maxBudgetUsd!!, 1e-9)
+        assertNull(correctness.callTimeoutSeconds, "no hardcoded timeout — inherits the configurable global default (300s)")
+        assertNull(design.callTimeoutSeconds, "no hardcoded timeout — inherits the configurable global default (300s)")
     }
 
     @Test

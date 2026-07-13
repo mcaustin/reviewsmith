@@ -207,7 +207,7 @@ class ReviewsmithCommand : Callable<Int> {
         val high = "$%.2f".format(units * 0.50)
         val cacheState = if (config.cache.enabled) "enabled" else "disabled"
         println(
-            "Would analyze ${files.size} file(s) × ${rules.size} rule(s) = $units work unit(s).",
+            "Would analyze ${files.size} file(s), ${rules.size} rule(s) → $units work unit(s).",
         )
         println("Estimated cost: $low–$high (at ~\$0.15–0.50/unit). Cache: $cacheState.")
         println("No agent calls made.")

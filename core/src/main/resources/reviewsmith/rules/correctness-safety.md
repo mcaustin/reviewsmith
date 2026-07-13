@@ -3,7 +3,6 @@ name: Correctness & Safety
 severity: error
 appliesTo: ["**/*.kt", "**/*.java", "**/*.ts", "**/*.tsx"]
 tags: ["correctness"]
-callTimeoutSeconds: 180
 maxBudgetUsd: 1.25
 ---
 
