@@ -83,6 +83,9 @@ class ReviewsmithCommand : Callable<Int> {
     @Option(names = ["--fail-on-abandoned"], description = ["Fail (exit 3) if any unit was abandoned (timeout/budget)"])
     var failOnAbandoned: Boolean = false
 
+    @Option(names = ["--report-level"], description = ["Hide findings below this severity: info (default) | warning | error"])
+    var reportLevel: String? = null
+
     @Option(names = ["--no-diff"], description = ["Do not embed the changed-lines diff in prompts (agent reads whole files)"])
     var noDiff: Boolean = false
 
@@ -182,6 +185,7 @@ class ReviewsmithCommand : Callable<Int> {
         if (noInlineSuppression) c = c.copy(suppression = c.suppression.copy(enabled = false))
         maxUnits?.let { c = c.copy(scope = c.scope.copy(maxUnits = it)) }
         if (force) c = c.copy(scope = c.scope.copy(maxUnits = 0))
+        reportLevel?.let { c = c.copy(reportLevel = it) }
         return c
     }
 

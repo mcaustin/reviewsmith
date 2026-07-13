@@ -11,6 +11,9 @@ abstract class ReviewsmithExtension {
     /** Abort before any agent call if scope exceeds this many (rule × file) units (0 = unlimited). */
     abstract val maxUnits: Property<Int>
 
+    /** Hide findings below this severity in output: info (default) | warning | error. */
+    abstract val reportLevel: Property<String>
+
     /** When true (default), a triggered review gate (CLI exit 3) fails the Gradle build. */
     abstract val failOnGate: Property<Boolean>
 

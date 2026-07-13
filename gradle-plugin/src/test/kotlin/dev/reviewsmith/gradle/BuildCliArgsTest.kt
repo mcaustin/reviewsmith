@@ -49,6 +49,20 @@ class BuildCliArgsTest {
     }
 
     @Test
+    fun `reportLevel is appended when set and omitted when null`() {
+        val withLevel = ReviewsmithTask.buildCliArgs(
+            cliJarPath = "j", rootPath = "r",
+            scope = null, model = null, format = null, isolation = null, noCache = false, reportLevel = "warning",
+        )
+        assertTrue(withLevel.containsAll(listOf("--report-level", "warning")))
+        val without = ReviewsmithTask.buildCliArgs(
+            cliJarPath = "j", rootPath = "r",
+            scope = null, model = null, format = null, isolation = null, noCache = false,
+        )
+        assertFalse(without.contains("--report-level"))
+    }
+
+    @Test
     fun `stdout is redirected only for machine formats`() {
         assertTrue(ReviewsmithTask.redirectsStdout("json"))
         assertTrue(ReviewsmithTask.redirectsStdout("sarif"))

@@ -20,6 +20,7 @@ class ReviewsmithPlugin : Plugin<Project> {
             task.isolation.set(extension.isolation)
             task.noCache.set(extension.noCache)
             task.maxUnits.set(extension.maxUnits)
+            task.reportLevel.set(extension.reportLevel)
             task.projectRootDir.set(project.layout.projectDirectory)
         }
 

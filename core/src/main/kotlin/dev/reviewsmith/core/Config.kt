@@ -2,6 +2,7 @@ package dev.reviewsmith.core
 
 import com.charleskorn.kaml.Yaml
 import dev.reviewsmith.spi.Confidence
+import dev.reviewsmith.spi.Severity
 import kotlinx.serialization.Serializable
 import java.nio.file.Files
 import java.nio.file.Path
@@ -93,6 +94,7 @@ data class ReviewsmithConfig(
     val maxConcurrency: Int = 6,
     val callTimeoutSeconds: Long = 300,
     val maxTotalBudgetUsd: Double? = null,
+    val reportLevel: String = "info",
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,
     val onlyRules: List<String>? = null,
@@ -103,6 +105,16 @@ data class ReviewsmithConfig(
     val gate: GateConfig = GateConfig(),
     val agent: AgentConfig = AgentConfig(),
 ) {
+    /**
+     * The minimum severity to surface in output. Findings below it are hidden from the report
+     * and do not gate (a display/log-level filter). `info` (default) shows everything.
+     */
+    fun reportLevelSeverity(): Severity = when (reportLevel.uppercase()) {
+        "ERROR" -> Severity.ERROR
+        "WARNING" -> Severity.WARNING
+        else -> Severity.INFO
+    }
+
     /** The rule sources to read, honoring an explicit list or the built-in default order. */
     fun effectiveRuleSources(): List<String> =
         ruleSources ?: if (buildUponDefault) {

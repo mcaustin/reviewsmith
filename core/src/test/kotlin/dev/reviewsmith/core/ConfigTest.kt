@@ -114,6 +114,13 @@ class ConfigTest {
     }
 
     @Test
+    fun `reportLevel defaults to info and parses case-insensitively`() {
+        assertEquals(dev.reviewsmith.spi.Severity.INFO, ReviewsmithConfig().reportLevelSeverity())
+        assertEquals(dev.reviewsmith.spi.Severity.WARNING, ReviewsmithConfig.parse("reportLevel: warning").reportLevelSeverity())
+        assertEquals(dev.reviewsmith.spi.Severity.ERROR, ReviewsmithConfig.parse("reportLevel: ERROR").reportLevelSeverity())
+    }
+
+    @Test
     fun `scope maxUnits and top-level maxTotalBudgetUsd parse`() {
         val cfg = ReviewsmithConfig.parse("scope:\n  maxUnits: 200\nmaxTotalBudgetUsd: 25.0")
         assertEquals(200, cfg.scope.maxUnits)

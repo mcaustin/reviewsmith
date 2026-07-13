@@ -37,6 +37,7 @@ data class RunResult(
     val rulesRun: Int,
     val suppressedByBaseline: Int = 0,
     val suppressedInline: Int = 0,
+    val hiddenByLevel: Int = 0,
     val abandonedUnits: Int = 0,
     val totalCostUsd: Double? = null,
     val cacheHits: Int = 0,
@@ -177,12 +178,18 @@ class Engine(
         val afterInline = applyInlineSuppression(pipelined.findings, files, repoRoot, config.suppression)
 
         val partition = BaselineFilter.partition(afterInline.surfaced, store)
+
+        val minLevel = config.reportLevelSeverity()
+        val visible = partition.surfaced.filter { it.severity.ordinal >= minLevel.ordinal }
+        val hiddenByLevel = partition.surfaced.size - visible.size
+
         return RunResult(
-            findings = partition.surfaced,
+            findings = visible,
             filesReviewed = files.size,
             rulesRun = rules.size,
             suppressedByBaseline = partition.suppressed.size,
             suppressedInline = afterInline.suppressed.size,
+            hiddenByLevel = hiddenByLevel,
             abandonedUnits = pipelined.abandonedUnits,
             totalCostUsd = stats.values.sumOf { it.totalCost },
             cacheHits = stats.values.sumOf { it.hits },
