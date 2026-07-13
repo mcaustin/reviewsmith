@@ -146,7 +146,8 @@ class Engine(
             }
         }
 
-        val pipelined = runPipelined(config, docs, repoRoot, units, diffs, verbose, runUnit)
+        val spentUsd = { stats.values.sumOf { it.totalCost } }
+        val pipelined = runPipelined(config, docs, repoRoot, units, diffs, verbose, spentUsd, runUnit)
 
         cache?.pruneIfNeeded()
         printTimingSummary(stats)
@@ -241,6 +242,7 @@ class Engine(
         units: List<Pair<Rule, String>>,
         diffs: DiffContext,
         verbose: Boolean,
+        spentUsd: () -> Double,
         runUnit: suspend (Pair<Rule, String>) -> List<Finding>,
     ): BoundedRun = runBlocking(Dispatchers.IO) {
         val concurrency = config.maxConcurrency.coerceAtLeast(1)
@@ -250,6 +252,8 @@ class Engine(
         val total = units.size
         val validatorEnabled = config.validator.enabled
         val chunkSize = config.validator.chunkSize.coerceAtLeast(1)
+        val budgetCap = config.maxTotalBudgetUsd
+        val budgetTripped = java.util.concurrent.atomic.AtomicBoolean(false)
 
         coroutineScope {
             val channel = Channel<List<Finding>>(Channel.UNLIMITED)
@@ -292,6 +296,16 @@ class Engine(
             val producers = units.map { unit ->
                 launch {
                     semaphore.withPermit {
+                        if (budgetCap != null && (budgetTripped.get() || spentUsd() >= budgetCap)) {
+                            if (budgetTripped.compareAndSet(false, true)) {
+                                System.err.println(
+                                    "Reviewsmith: total budget cap of $%.2f reached (spent $%.4f) — ".format(budgetCap, spentUsd()) +
+                                        "halting; remaining unit(s) abandoned.",
+                                )
+                            }
+                            abandoned.incrementAndGet()
+                            return@withPermit
+                        }
                         val produced = try {
                             runUnit(unit)
                         } catch (e: Exception) {

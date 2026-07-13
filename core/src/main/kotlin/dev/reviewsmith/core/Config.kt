@@ -91,6 +91,7 @@ data class ReviewsmithConfig(
     val validator: ValidatorConfig = ValidatorConfig(),
     val maxConcurrency: Int = 6,
     val callTimeoutSeconds: Long = 300,
+    val maxTotalBudgetUsd: Double? = null,
     val buildUponDefault: Boolean = true,
     val ruleSources: List<String>? = null,
     val onlyRules: List<String>? = null,

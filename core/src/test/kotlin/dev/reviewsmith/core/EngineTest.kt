@@ -382,6 +382,24 @@ class EngineTest {
     }
 
     @Test
+    fun `total budget cap halts dispatch and abandons remaining units`(@TempDir repo: Path) {
+        for (i in 1..6) Files.writeString(repo.resolve("F$i.kt"), "class F$i")
+        writeRule(repo.resolve(".claude/rules"), "only-kt.md", "---\npaths:\n  - \"**/*.kt\"\n---\nbody")
+        Files.writeString(
+            repo.resolve("reviewsmith.yml"),
+            "ruleSources:\n  - .claude/rules\nvalidator:\n  enabled: false\nmaxConcurrency: 1\nmaxTotalBudgetUsd: 0.10",
+        )
+        // Each unit costs $0.05; with a $0.10 cap and sequential dispatch, ~2 units run then the rest abandon.
+        val provider = FakeProvider(costUsd = 0.05)
+
+        val result = Engine(provider).run(repo, mode = "full")
+
+        assertTrue(provider.ruleCallCount() in 2..4, "only a few units run before the cap trips: ${provider.ruleCallCount()}")
+        assertTrue(result.abandonedUnits > 0, "units past the budget cap are abandoned")
+        assertEquals(6, provider.ruleCallCount() + result.abandonedUnits, "every unit is either run or abandoned")
+    }
+
+    @Test
     fun `maxUnits zero means unlimited`(@TempDir repo: Path) {
         seedRepo(repo)
         Files.writeString(
