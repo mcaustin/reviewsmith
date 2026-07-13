@@ -21,18 +21,21 @@ class ScopeResolverTest {
         val untracked: String = "",
         val mergeBase: String = "abc1234",
         val ghPrBase: String = "",
+        val commitDistance: String = "3",
     ) : CommandRunner {
         val refChecks = mutableListOf<String>()
+        var mergeBaseCalls = 0
 
         override fun run(workingDir: Path, command: List<String>): String {
             return when {
                 command.firstOrNull() == "gh" -> ghPrBase
+                command.contains("rev-list") -> "$commitDistance\n"
                 command.contains("rev-parse") -> {
                     val ref = command.last().removeSuffix("^{commit}")
                     refChecks += ref
                     if (ref in existingRefs) "abc123\n" else ""
                 }
-                command.contains("merge-base") -> "$mergeBase\n"
+                command.contains("merge-base") -> { mergeBaseCalls++; "$mergeBase\n" }
                 command.contains("ls-files") -> untracked
                 command.contains("diff") && command.contains("HEAD") && command.size == 4 -> uncommitted
                 command.contains("diff") -> committed
@@ -54,6 +57,7 @@ class ScopeResolverTest {
                 val ref = command.last().removeSuffix("^{commit}")
                 if (ref in existingRefs) "abc123\n" else ""
             }
+            command.contains("rev-list") -> "3\n"
             command.contains("merge-base") -> "abc1234\n"
             command.contains("--no-index") -> untrackedDiff
             command.contains("ls-files") -> if (command.last() in trackedFiles) "${command.last()}\n" else ""
@@ -126,6 +130,46 @@ class ScopeResolverTest {
         val git = FakeGit(existingRefs = emptySet(), uncommitted = "Local.kt\n", untracked = "New.kt\n")
         val files = ScopeResolver(git, env = { null }).resolve(repo, config(), "changed")
         assertEquals(listOf("Local.kt", "New.kt"), files)
+    }
+
+    @Test
+    fun `explicit baseRef branch name prefers origin over stale local`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main", "main"), committed = "A.kt\n")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(baseRef = "main"))
+        ScopeResolver(git, env = { null }).resolve(repo, cfg, "changed")
+        assertEquals("origin/main", git.refChecks.first(), "baseRef 'main' must try origin/main before local main")
+    }
+
+    @Test
+    fun `explicit baseRef already qualified with origin is used verbatim`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(baseRef = "origin/main"))
+        ScopeResolver(git, env = { null }).resolve(repo, cfg, "changed")
+        assertEquals("origin/main", git.refChecks.first(), "an origin/-qualified baseRef is not double-prefixed")
+        assertFalse(git.refChecks.contains("origin/origin/main"), "must not produce origin/origin/main")
+    }
+
+    @Test
+    fun `explicit baseRef that is a sha is used verbatim`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val sha = "abc1234"
+        val git = FakeGit(existingRefs = setOf(sha), committed = "A.kt\n")
+        val cfg = ReviewsmithConfig(scope = ScopeConfig(baseRef = sha))
+        ScopeResolver(git, env = { null }).resolve(repo, cfg, "changed")
+        assertEquals(sha, git.refChecks.first(), "a SHA baseRef is used as-is, not prefixed with origin/")
+    }
+
+    @Test
+    fun `base resolution runs once across resolve and captureDiffs`(@TempDir repo: Path) {
+        seed(repo, "A.kt")
+        val git = FakeGit(existingRefs = setOf("origin/main"), committed = "A.kt\n")
+        val resolver = ScopeResolver(git, env = { null })
+        val cfg = config()
+        val files = resolver.resolve(repo, cfg, "changed")
+        resolver.captureDiffs(repo, cfg, files)
+        assertEquals(1, git.mergeBaseCalls, "resolveBase must be memoized, not recomputed in captureDiffs")
     }
 
     @Test
