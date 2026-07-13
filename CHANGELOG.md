@@ -7,11 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-13
+
+Second Gradle Plugin Portal release. Focus: operational safety (no more runaway-cost review), plus a TypeScript rule, inline suppression, and provider extensibility.
+
 ### Added
 
 - **`typescript-safety` default rule** — a ninth bundled rule targeting `**/*.ts` / `**/*.tsx` for TypeScript-specific defects a compiler or ESLint won't reliably catch (floating promises, unsound non-null assertions and `as` casts, exhaustiveness gaps), with positive/negative fixtures.
+- **Inline suppression** — comment directives (`// reviewsmith-disable-next-line <rule> -- reason`, plus `disable-line` / `disable`…`enable` block / `disable-file`) across `//`, `#`, `--`, `/* */`. A rule id is required (a bare directive is refused with a notice); line-level directives tolerate ±2 lines of LLM line drift while block/file scopes use exact ranges; directives that match no finding are reported as unused.
+- **Pre-flight scope guardrail** — logs `N file(s), R rule(s) → U work unit(s)` with a cost estimate before any agent call; `scope.maxUnits` (default 0 = unlimited) aborts an over-scoped run (`--force` / `--max-units` to override) as a backstop against a mis-resolved base fanning out into a whole-codebase review.
+- **Mid-run total-budget breaker** — `maxTotalBudgetUsd` (default null) halts dispatch once cumulative spend reaches the cap, abandoning remaining units and preserving findings produced so far.
+- **Streaming findings** — validated findings stream to stderr (`[preview]`-tagged) as they complete, and a shutdown hook flushes findings-so-far on interrupt, so a long run killed mid-flight still surfaces what it found.
+- **`gate.failOnAbandoned`** (`--fail-on-abandoned`) — fail the build (exit 3) if any unit was abandoned (timeout/budget), so a run that silently dropped units can't report as clean.
 - **ServiceLoader-based provider discovery** — an `AgentProviderFactory` SPI resolved via `java.util.ServiceLoader`, so alternate agent providers can register without code changes; the CLI resolves through it and falls back to the bundled `claude-code` provider.
 - **Contributor docs** — `CONTRIBUTING.md` (build/test on JDK 21, module layout, the core boundary rule) and `docs/writing-rules.md` (rule frontmatter contract + fixture-harness guide).
+
+### Changed
+
+- **Diff base resolution prefers the remote.** An explicit `scope.baseRef` that is a plain branch name now resolves `origin/<name>` before a local `<name>`, matching every other base source — a stale local branch no longer expands the diff to the whole codebase. The resolved merge-base SHA and its commit distance are logged, with a warning when the base is far behind `HEAD`.
+- **Heavy rules inherit the global timeout.** `correctness-safety` and `design-impact` no longer hardcode a 180s call timeout; they inherit the configurable global default (300s). Measured on real PRs they reached 80–84% of the old 180s cap, and a timeout abandons the unit. Per-rule budget caps are unchanged.
+
+### Fixed
+
+- **Base resolution ran twice per review** (from `resolve()` and `captureDiffs()`), firing a redundant `gh pr view` + git calls and a doubled log line — now memoized to run once.
+- Verbose/progress log lines print the full repo-relative path instead of just the basename (identical basenames across modules read as duplicate work).
 
 ## [0.1.0] - 2026-07-11
 
@@ -51,5 +70,6 @@ First release published to the [Gradle Plugin Portal](https://plugins.gradle.org
 - Git-runner hang under high concurrency; gate wiring for non-`none` `failOn` values; dead config keys stripped; +26 test additions covering the fixed paths.
 - Isolation enforcement, stacked-PR scope edge cases, and validator scaling under large finding sets (from live PR test feedback).
 
-[Unreleased]: https://github.com/mcaustin/reviewsmith/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/mcaustin/reviewsmith/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/mcaustin/reviewsmith/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/mcaustin/reviewsmith/releases/tag/v0.1.0

@@ -28,7 +28,7 @@ import kotlin.system.exitProcess
 @Command(
     name = "reviewsmith",
     mixinStandardHelpOptions = true,
-    version = ["reviewsmith 0.0.1"],
+    version = ["reviewsmith 0.2.0"],
     subcommands = [BaselineCommand::class, InitCommand::class],
     description = ["AI-agent code review that reasons about intent."],
 )
